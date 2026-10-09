@@ -90,7 +90,7 @@ int main() {
   req[5]=2;
   assert(h.handle(req,8,reply,&d,0)==9 && reply[8]==HostDisplay::UNSUPPORTED);
   assert(send(HostDisplay::CAPABILITIES)==HostDisplay::OK);
-  assert(reply[9]==1 && reply[10]==3 && reply[11]==0 && reply[12]==1 && reply[13]==83);
+  assert(reply[9]==1 && reply[10]==7 && reply[11]==0 && reply[12]==1 && reply[13]==83);
   assert(send(HostDisplay::CLEAR)==HostDisplay::OK);
   // All octants, reversed endpoints and degenerate point.
   for (auto end : std::vector<std::pair<uint8_t,uint8_t>>{{20,12},{12,20},{8,20},{0,12},{0,8},{8,0},{12,0},{20,8},{10,10},{10,20},{20,10}}) {
@@ -133,5 +133,38 @@ int main() {
   send(HostDisplay::BEGIN,{2,0});
   now=1000; send(HostDisplay::CAPABILITIES);
   assert(h.expire(2000)); // capability query must not renew lease
+
+  uint8_t event[176], again[176];
+  assert(send(HostDisplay::BUTTON_SUBSCRIBE,{1})==HostDisplay::BAD_STATE);
+  send(HostDisplay::BEGIN,{2,0});
+  h.recordButton(1,1); assert(h.peekButton(event)==0);
+  assert(send(HostDisplay::BUTTON_SUBSCRIBE,{2})==HostDisplay::BAD_ARGUMENT);
+  assert(send(HostDisplay::BUTTON_SUBSCRIBE,{1,0})==HostDisplay::BAD_ARGUMENT);
+  assert(send(HostDisplay::BUTTON_SUBSCRIBE,{1})==HostDisplay::OK);
+  for(int gesture=1;gesture<=4;gesture++) h.recordButton(gesture,0x12345678);
+  for(int gesture=1;gesture<=4;gesture++) {
+    assert(h.peekButton(event)==16 && event[7]==0x80 && event[8]==0);
+    assert(event[9]==gesture && event[10]==gesture && event[11]==0);
+    assert(event[12]==0x78 && event[13]==0x56 && event[14]==0x34 && event[15]==0x12);
+    h.peekButton(again); assert(memcmp(event,again,16)==0); // retain on busy/failed write
+    h.consumeButton();
+  }
+  assert(h.peekButton(event)==0);
+  for(int i=0;i<10;i++) h.recordButton(1,i);
+  assert(h.peekButton(event)==16 && event[10]==7); // drop oldest, visible sequence gap
+  send(HostDisplay::CLEAR); send(HostDisplay::BEGIN,{2,0});
+  assert(h.buttonSubscribed() && h.peekButton(event)==16); // redraw keeps subscription
+  send(HostDisplay::BUTTON_SUBSCRIBE,{0}); assert(h.peekButton(event)==0);
+  send(HostDisplay::BUTTON_SUBSCRIBE,{1}); assert(h.peekButton(event)==0);
+  h.recordButton(0,0); h.recordButton(5,0); assert(h.peekButton(event)==0);
+  h.recordButton(2,0); send(HostDisplay::RELEASE);
+  assert(!h.buttonSubscribed() && h.peekButton(event)==0);
+  now=0; send(HostDisplay::BEGIN,{2,0}); send(HostDisplay::BUTTON_SUBSCRIBE,{1});
+  h.recordButton(1,1999); assert(h.expire(2000)); // events do not renew lease
+  assert(!h.buttonSubscribed() && h.peekButton(event)==0);
+  send(HostDisplay::BEGIN,{2,0}); send(HostDisplay::BUTTON_SUBSCRIBE,{1});
+  // Sequence wraps modulo 65536. Every accepted event advances it even on overflow.
+  for(int i=0;i<65536;i++) { h.recordButton(1,i); h.peekButton(event); h.consumeButton(); }
+  assert(event[10]==16 && event[11]==0);
 
 }
