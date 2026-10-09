@@ -22,7 +22,15 @@
 #include "../AbstractUITask.h"
 #include "../NodePrefs.h"
 
+#ifdef ENABLE_HOST_DISPLAY
+#include "../HostDisplay.h"
+#endif
+
 class UITask : public AbstractUITask {
+#ifdef ENABLE_HOST_DISPLAY
+  HostDisplay _host_display;
+  void restoreLocalDisplay();
+#endif
   DisplayDriver* _display;
   SensorManager* _sensors;
 #ifdef PIN_BUZZER
@@ -97,5 +105,8 @@ public:
   void notify(UIEventType t = UIEventType::none) override;
   void loop() override;
 
+#ifdef ENABLE_HOST_DISPLAY
+  size_t hostDisplayCommand(const uint8_t* req, size_t len, uint8_t* resp) override;
+#endif
   void shutdown(bool restart = false);
 };

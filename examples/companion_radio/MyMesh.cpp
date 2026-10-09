@@ -1020,6 +1020,14 @@ void MyMesh::startInterface(BaseSerialInterface &serial) {
 }
 
 void MyMesh::handleCmdFrame(size_t len) {
+#if defined(ENABLE_HOST_DISPLAY) && defined(ENABLE_USB_INTERFACE) && defined(DISPLAY_CLASS)
+  if (len > 0 && cmd_frame[0] == 0xF0) {
+    size_t reply_len = _ui ? _ui->hostDisplayCommand(cmd_frame, len, out_frame) : 0;
+    if (reply_len) _serial->writeFrame(out_frame, reply_len);
+    else writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
+    return;
+  }
+#endif
   if (cmd_frame[0] == CMD_DEVICE_QUERY && len >= 2) { // sent when app establishes connection
     app_target_ver = cmd_frame[1];                    // which version of protocol does app understand
 

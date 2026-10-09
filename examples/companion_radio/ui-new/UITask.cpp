@@ -733,7 +733,37 @@ bool UITask::isButtonPressed() const {
 #endif
 }
 
+#ifdef ENABLE_HOST_DISPLAY
+void UITask::restoreLocalDisplay() {
+  gotoHomeScreen();
+  _alert_expiry = 0;
+  _next_refresh = 0;
+  _auto_off = millis() + AUTO_OFF_MILLIS;
+  if (_display) _display->turnOn();
+}
+
+size_t UITask::hostDisplayCommand(const uint8_t* req, size_t len, uint8_t* resp) {
+  if (_host_display.expire(millis())) restoreLocalDisplay();
+  bool was_active = _host_display.active();
+  size_t result = _host_display.handle(req, len, resp, _display, millis());
+  if (was_active && !_host_display.active()) restoreLocalDisplay();
+  return result;
+}
+#endif
+
 void UITask::loop() {
+#ifdef ENABLE_HOST_DISPLAY
+  if (_host_display.expire(millis())) restoreLocalDisplay();
+  // Radio and sensors run outside this UI task. Preserve message bookkeeping,
+  // but suppress local drawing, screen timeout, and button actions while owned.
+  if (_host_display.active()) {
+#ifdef PIN_USER_BTN
+    user_btn.check(); // drain button events rather than replaying on release
+#endif
+    userLedHandler();
+    return;
+  }
+#endif
   char c = 0;
 #if UI_HAS_JOYSTICK
   int ev = user_btn.check();
