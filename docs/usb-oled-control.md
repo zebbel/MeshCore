@@ -149,8 +149,8 @@ renew the display lease.
 | 9 POLYLINE | `point_count u8`, then repeated `x u8, y u8` pairs |
 
 CAPABILITIES success adds bytes at offsets 9–13:
-`graphics_revision=1, flags=3, max_segments_lo=0, max_segments_hi=1, max_points=83`.
-Flags bit 0 indicates LINE; bit 1 indicates POLYLINE. Maximum line segments is
+`graphics_revision=1, flags=7, max_segments_lo=0, max_segments_hi=1, max_points=83`.
+Flags bit 0 indicates LINE; bit 1 indicates POLYLINE; bit 2 indicates button reporting. Maximum line segments is
 uint16 little endian (256), independent of the existing 16 text items.
 
 LINE draws a one-pixel-wide white segment including both endpoints. Identical
@@ -215,3 +215,70 @@ F0 4D 43 4F 44 01 15 04                         # show
 Graph tests cover all line octants, reversed and identical endpoints, exact
 pixel output, display bounds, malformed payloads, all-or-nothing validation,
 83-point chunks, the 256-segment capacity, and clearing/releasing scenes.
+
+## Button gesture reporting
+
+CAPABILITIES flags (offset 10) now include bit 2 (`0x04`) for button gestures;
+LINE and POLYLINE bits remain unchanged. Test individual bits, not equality to
+3. The response length and envelope version stay unchanged. This capability
+is enabled for the Heltec V4 OLED USB build with its onboard user button.
+
+After BEGIN, send operation 10 (`0x0A`, BUTTON_SUBSCRIBE) with exactly one byte:
+1 enables reporting, 0 disables reporting and clears queued events. It uses the
+normal 9-byte command response. No active display lease returns BAD_STATE;
+invalid lengths/values return BAD_ARGUMENT. Successful subscription commands
+renew the lease. Repeating enable is idempotent and keeps queued events.
+
+BEGIN while already acquired and CLEAR preserve the subscription, so replacing
+a screen does not disable buttons. RELEASE, lease expiry and reboot disable it
+and discard queued events. The host must subscribe again after reacquiring.
+Ordinary button activity never renews the lease. No polling command is needed.
+
+Example subscription payload (request ID 0x20):
+
+```text
+F0 4D 43 4F 44 01 20 0A 01
+```
+
+Button notifications are unsolicited 16-byte payloads within normal `>` USB
+frames. They are NOT command responses and contain no status byte:
+
+| Offset | Field |
+| --- | --- |
+| 0–5 | `F0 4D 43 4F 44 01` (existing MCOD envelope) |
+| 6 | Reserved, zero; not a request ID |
+| 7 | `80` (button event) |
+| 8 | Button ID: 0 = onboard user/PRG button, not reset |
+| 9 | Gesture: 1 single click, 2 long press, 3 double click, 4 triple click |
+| 10–11 | Event sequence, uint16 little endian |
+| 12–15 | Gesture recognition uptime in milliseconds, uint32 little endian |
+
+Sequence starts at 1 after boot, advances for every accepted gesture, wraps at
+65536, and does not reset on unsubscribe/reacquire. Uptime wraps at 2^32 ms.
+Neither field is a wall-clock timestamp. Host code should reset its tracking on
+a new connection/boot and use modulo arithmetic. Sequence gaps can indicate
+queue overflow or events discarded at subscription/lease transitions.
+
+An eight-event RAM FIFO drops the oldest item when full, retaining recent user
+input. At most one event is sent per firmware loop after normal command
+processing, when the serial interface is enabled and not busy. Events remain
+queued until writeFrame reports success. This is best-effort delivery without
+host acknowledgements; deduplicate sequences if a failed/partial write leads
+to a retry. Do not treat the events as replies to outstanding requests.
+
+Gestures use the existing button recognizer (including its multi-click window).
+There are no immediate press/release notifications. During host-controlled mode
+local screen/button actions remain suppressed, whether subscribed or not;
+unsubscribed gestures are discarded. Pending gestures are cancelled when
+entering/leaving host mode or changing subscription, to avoid carrying a partial
+gesture across modes. On RELEASE/expiry local button behaviour resumes.
+
+meshcoreStation integration (separate project): inspect the capability bit,
+BEGIN then subscribe, route operation 0x80 to an event handler before matching
+command replies, and choose application actions for the four gestures. Continue
+normal display heartbeats. Firmware does not choose pages or station actions.
+
+Host tests cover all four event types, exact wire fields, queue overflow,
+retention until successful write consumption, subscription validation, redraw
+compatibility, lease cleanup and sequence wrap. Physical button timing and
+USB delivery require on-device testing after compilation.
