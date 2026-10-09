@@ -43,6 +43,8 @@ public:
   virtual void newMsg(uint8_t path_len, const char* from_name, const char* text, int msgcount) = 0;
   virtual void notify(UIEventType t = UIEventType::none) = 0;
 #ifdef ENABLE_HOST_DISPLAY
+  virtual size_t peekHostButton(uint8_t* frame) { return 0; }
+  virtual void consumeHostButton() {}
   virtual size_t hostDisplayCommand(const uint8_t* req, size_t len, uint8_t* resp) { return 0; }
 #endif
   virtual void loop() = 0;
