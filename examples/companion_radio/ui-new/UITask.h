@@ -106,6 +106,8 @@ public:
   void loop() override;
 
 #ifdef ENABLE_HOST_DISPLAY
+  size_t peekHostButton(uint8_t* frame) override;
+  void consumeHostButton() override { _host_display.consumeButton(); }
   size_t hostDisplayCommand(const uint8_t* req, size_t len, uint8_t* resp) override;
 #endif
   void shutdown(bool restart = false);
