@@ -735,6 +735,9 @@ bool UITask::isButtonPressed() const {
 
 #ifdef ENABLE_HOST_DISPLAY
 void UITask::restoreLocalDisplay() {
+#ifdef PIN_USER_BTN
+  user_btn.cancelClick();
+#endif
   gotoHomeScreen();
   _alert_expiry = 0;
   _next_refresh = 0;
@@ -745,9 +748,20 @@ void UITask::restoreLocalDisplay() {
 size_t UITask::hostDisplayCommand(const uint8_t* req, size_t len, uint8_t* resp) {
   if (_host_display.expire(millis())) restoreLocalDisplay();
   bool was_active = _host_display.active();
+  bool was_subscribed = _host_display.buttonSubscribed();
   size_t result = _host_display.handle(req, len, resp, _display, millis());
+#ifdef PIN_USER_BTN
+  if (was_active != _host_display.active() || was_subscribed != _host_display.buttonSubscribed()) user_btn.cancelClick();
+#endif
   if (was_active && !_host_display.active()) restoreLocalDisplay();
   return result;
+}
+#endif
+
+#ifdef ENABLE_HOST_DISPLAY
+size_t UITask::peekHostButton(uint8_t* frame) {
+  if (_host_display.expire(millis())) restoreLocalDisplay();
+  return _host_display.peekButton(frame);
 }
 #endif
 
@@ -758,7 +772,14 @@ void UITask::loop() {
   // but suppress local drawing, screen timeout, and button actions while owned.
   if (_host_display.active()) {
 #ifdef PIN_USER_BTN
-    user_btn.check(); // drain button events rather than replaying on release
+    int event = user_btn.check();
+    // Explicit mapping keeps wire values independent of library constants.
+    uint8_t gesture = 0;
+    if (event == BUTTON_EVENT_CLICK) gesture = 1;
+    else if (event == BUTTON_EVENT_LONG_PRESS) gesture = 2;
+    else if (event == BUTTON_EVENT_DOUBLE_CLICK) gesture = 3;
+    else if (event == BUTTON_EVENT_TRIPLE_CLICK) gesture = 4;
+    if (gesture) _host_display.recordButton(gesture, millis());
 #endif
     userLedHandler();
     return;
