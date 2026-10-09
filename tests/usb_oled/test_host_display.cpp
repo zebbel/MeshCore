@@ -1,6 +1,8 @@
 #include <cassert>
 #include <vector>
 #include <string>
+#include <set>
+#include <utility>
 #include "examples/companion_radio/HostDisplay.h"
 ColorVal UIColor::window_bkg = 0;
 ColorVal UIColor::primary_txt = 1;
@@ -9,17 +11,18 @@ public:
   int frames = 0;
   bool on = false;
   std::string drawn;
+  std::set<std::pair<int,int>> pixels;
   Screen() : DisplayDriver(128,64) {}
   bool isOn() override { return on; }
   void turnOn() override { on = true; }
   void turnOff() override { on = false; }
   void clear() override {}
-  void startFrame(ColorVal) override { drawn.clear(); }
+  void startFrame(ColorVal) override { drawn.clear(); pixels.clear(); }
   void setTextSize(int) override {}
   void setColor(ColorVal) override {}
   void setCursor(int,int) override {}
   void print(const char* s) override { drawn += s; }
-  void fillRect(int,int,int,int) override {}
+  void fillRect(int x,int y,int w,int h) override { assert(x>=0 && x<128 && y>=0 && y<64 && w==1 && h==1); pixels.insert({x,y}); }
   void drawRect(int,int,int,int) override {}
   void drawXbm(int,int,const uint8_t*,int,int) override {}
   uint16_t getTextWidth(const char*) override { return 0; }
@@ -86,4 +89,49 @@ int main() {
   req[7]=0;
   req[5]=2;
   assert(h.handle(req,8,reply,&d,0)==9 && reply[8]==HostDisplay::UNSUPPORTED);
+  assert(send(HostDisplay::CAPABILITIES)==HostDisplay::OK);
+  assert(reply[9]==1 && reply[10]==3 && reply[11]==0 && reply[12]==1 && reply[13]==83);
+  assert(send(HostDisplay::CLEAR)==HostDisplay::OK);
+  // All octants, reversed endpoints and degenerate point.
+  for (auto end : std::vector<std::pair<uint8_t,uint8_t>>{{20,12},{12,20},{8,20},{0,12},{0,8},{8,0},{12,0},{20,8},{10,10},{10,20},{20,10}}) {
+    send(HostDisplay::CLEAR);
+    assert(send(HostDisplay::LINE,{10,10,end.first,end.second})==HostDisplay::OK);
+    send(HostDisplay::SHOW);
+    auto forward=d.pixels;
+    assert(forward.count({10,10}) && forward.count({end.first,end.second}));
+    send(HostDisplay::CLEAR);
+    assert(send(HostDisplay::LINE,{end.first,end.second,10,10})==HostDisplay::OK);
+    send(HostDisplay::SHOW);
+    assert(d.pixels.size()==forward.size());
+  }
+  send(HostDisplay::CLEAR);
+  assert(send(HostDisplay::POLYLINE,{3,0,0,2,0,2,2})==HostDisplay::OK);
+  assert(send(HostDisplay::POLYLINE,{3,4,4,5,5,128,2})==HostDisplay::BAD_ARGUMENT);
+  assert(send(HostDisplay::LINE,{0,0,1,64})==HostDisplay::BAD_ARGUMENT);
+  assert(send(HostDisplay::LINE,{0,0,1})==HostDisplay::BAD_ARGUMENT);
+  assert(send(HostDisplay::POLYLINE,{2,0,0})==HostDisplay::BAD_ARGUMENT);
+  assert(send(HostDisplay::POLYLINE,{1,0,0})==HostDisplay::BAD_ARGUMENT);
+  send(HostDisplay::SHOW);
+  std::set<std::pair<int,int>> expected={{0,0},{1,0},{2,0},{2,1},{2,2}};
+  assert(d.pixels==expected); // invalid command did not partially append
+  send(HostDisplay::CLEAR);
+  std::vector<uint8_t> many={83};
+  for(int i=0;i<83;i++) { many.push_back(i); many.push_back(30); }
+  for(int i=0;i<3;i++) assert(send(HostDisplay::POLYLINE,many)==HostDisplay::OK);
+  for(int i=0;i<10;i++) assert(send(HostDisplay::LINE,{0,0,0,0})==HostDisplay::OK);
+  assert(send(HostDisplay::LINE,{0,0,1,1})==HostDisplay::FULL);
+  assert(send(HostDisplay::POLYLINE,{2,0,0,1,1})==HostDisplay::FULL);
+  send(HostDisplay::SHOW);
+  assert(d.pixels.size()==84);
+  send(HostDisplay::CLEAR); send(HostDisplay::SHOW); assert(d.pixels.empty());
+  assert(send(HostDisplay::LINE,{127,63,127,63})==HostDisplay::OK);
+  send(HostDisplay::SHOW); assert(d.pixels.count({127,63}));
+  send(HostDisplay::RELEASE);
+  assert(send(HostDisplay::LINE,{0,0,1,1})==HostDisplay::BAD_STATE);
+  send(HostDisplay::BEGIN,{2,0}); send(HostDisplay::SHOW); assert(d.pixels.empty());
+  now=0;
+  send(HostDisplay::BEGIN,{2,0});
+  now=1000; send(HostDisplay::CAPABILITIES);
+  assert(h.expire(2000)); // capability query must not renew lease
+
 }
