@@ -64,3 +64,28 @@ This build matches the supplied table; do not bypass a mismatch reported for a
 different device or a later changed layout. No erase or filesystem relocation
 is required. Actual firmware compilation and on-device validation must still
 succeed before treating a release as verified.
+
+## One-command build beside MeshCore
+
+Install the wrapper once (or repeat to update it), from the directory that
+contains your `MeshCore` checkout:
+
+```sh
+bash MeshCore/scripts/build-station.sh --install
+./build-station.sh
+```
+
+The script lives one folder above MeshCore. It can be called from any working
+directory and puts `heltec_v4_companion_radio_usb.bin` and
+`heltec_v4_companion_radio_usb.json` beside itself. It finds `pio` on PATH or at
+`~/.platformio/penv/bin/pio`; alternatively set `STATION_PIO` to the full path of
+the executable. It does a clean build, invokes the manifest packager, verifies
+the copied image hash, and prints the two release paths. It does not pull Git,
+change branches, upload a release, or flash the companion. Pull the desired
+source branch before running it.
+
+The two previous output files are removed when a build starts so a failed build
+cannot be mistaken for a new release. Builds sharing the output directory are
+locked. Other files beside the script are left untouched. The wrapper's tracked
+source stays in `scripts/build-station.sh`; repeat `--install` after pulling a
+future change to the wrapper.
