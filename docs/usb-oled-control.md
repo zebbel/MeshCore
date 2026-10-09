@@ -3,7 +3,7 @@
 Target: Heltec V4 OLED, `heltec_v4_companion_radio_usb`.
 This fork enables `ENABLE_HOST_DISPLAY=1` on that target only. It is not an
 upstream MeshCore protocol allocation. No meshcoreStation changes are included.
-Baseline: a366955c. Build and upload using the usual PlatformIO target:
+Text baseline: a366955c; graphics extension based on 9a679c25. Build and upload using the usual PlatformIO target:
 
 ```sh
 pio run -e heltec_v4_companion_radio_usb
@@ -64,18 +64,18 @@ INFO success adds five bytes at offsets 9–13:
 TEXT uses top-left pixel coordinates and built-in printable ASCII (32–126),
 without a terminating NUL. Size 1 uses 6×8 cells; size 2 uses 12×16 cells.
 Text must be nonempty and fit completely: `x + length*6*size <= 128`,
-`y + 8*size <= 64`. No wrapping, newlines or UTF-8 in v1. Use several TEXT
+`y + 8*size <= 64`. No text wrapping, newlines or UTF-8 in v1. Use several TEXT
 commands for multiple lines. Items render in submission order with transparent
 text backgrounds. For replacement, CLEAR and resubmit the complete scene before
 SHOW. Maximum 16 items per scene. Invalid commands leave the scene unchanged.
 All request lengths are checked exactly, except TEXT's variable text length.
 
 Statuses (offset 8): 0 OK, 1 BAD_ARGUMENT, 2 BAD_STATE (not acquired),
-3 UNSUPPORTED (version/operation), 4 NO_DISPLAY, 5 FULL (16 items already used).
-Errors have no additional data. Only INFO success has additional data.
+3 UNSUPPORTED (version/operation), 4 NO_DISPLAY, 5 FULL (text-item or line-segment capacity reached).
+Errors have no additional data. INFO and CAPABILITIES success have additional data.
 
-BEGIN, TEXT, CLEAR, SHOW and KEEPALIVE renew the lease when successful.
-INFO, errors and malformed commands do not renew it. Timeout is checked before
+BEGIN, TEXT, LINE, POLYLINE, CLEAR, SHOW and KEEPALIVE renew the lease when successful.
+INFO, CAPABILITIES, errors and malformed commands do not renew it. Timeout is checked before
 commands and during the main loop, including across millis() rollover. A USB
 cable disconnect cannot be reliably inferred from upstream's serial interface,
 so expiry is the recovery mechanism. Suggested host lease: 30 seconds, heartbeat
@@ -132,3 +132,86 @@ g++ -std=c++11 -Wall -Wextra -Werror -Wno-unused-parameter \
 On hardware, verify INFO, acquire/render/release, expiry after stopping the host,
 normal messaging while acquired, and normal UI after reset. Host tests cannot
 verify the physical OLED or radio behaviour.
+
+
+## Graph drawing (graphics revision 1)
+
+The envelope remains version 1. Operations 0–6 and INFO's exact response are
+unchanged. After INFO, send CAPABILITIES (operation 7) to detect graph support.
+The earlier text-only firmware returns UNSUPPORTED for this operation; hosts
+should then display text only. CAPABILITIES works without BEGIN and does not
+renew the display lease.
+
+| Operation | Arguments after the 8-byte envelope |
+| --- | --- |
+| 7 CAPABILITIES | None |
+| 8 LINE | `x0, y0, x1, y1`, all uint8 |
+| 9 POLYLINE | `point_count u8`, then repeated `x u8, y u8` pairs |
+
+CAPABILITIES success adds bytes at offsets 9–13:
+`graphics_revision=1, flags=3, max_segments_lo=0, max_segments_hi=1, max_points=83`.
+Flags bit 0 indicates LINE; bit 1 indicates POLYLINE. Maximum line segments is
+uint16 little endian (256), independent of the existing 16 text items.
+
+LINE draws a one-pixel-wide white segment including both endpoints. Identical
+endpoints draw a single pixel. POLYLINE joins consecutive points; it accepts
+2–83 points and consumes point_count−1 segments. Each coordinate must be inside
+x=0–127, y=0–63; coordinates outside the display are rejected, not clipped.
+The whole command is validated before appending anything. Commands require an
+active lease, renew it on success, and return existing statuses. Invalid
+lengths, counts or coordinates return BAD_ARGUMENT; insufficient segment
+capacity returns FULL without appending a partial graph.
+
+Drawing is buffered until SHOW. BEGIN, CLEAR, RELEASE and expiry discard both
+text and segments. SHOW renders all segments first, then text, and flushes the
+OLED once. Text uses transparent backgrounds, so allocate a separate label area
+if lines should not pass through labels. The existing visible screen stays
+unchanged while building the next scene. There are no separate erasing commands;
+CLEAR and redraw for the next update. Adding graphics requires approximately
+1 KiB of fixed scene storage; no dynamic allocation or flash writes are used.
+
+A full 128-column graph needs 127 segments, leaving room for axes and grid lines.
+For more than 83 points, split the graph into multiple POLYLINE commands and
+repeat the previous chunk's final point as the next chunk's first point. Do not
+repeat an endpoint between disconnected runs (missing data): start a separate
+polyline. Await each reply. An uncertain retry can duplicate segments, so CLEAR
+and rebuild the scene after an ambiguous timeout.
+
+### Example: voltage and percent above a 24-hour graph
+
+Suggested pixel layout:
+
+- TEXT at (0,0), size 1: current voltage and percentage, e.g. `3.92V  78%`.
+- Plot interior x=1–126, y=18–52; horizontal axis y=53 and vertical axis x=0.
+- TEXT at (0,56): `-24h`; TEXT at (108,56): `now`.
+
+The host owns history, aggregation, units and scaling. The firmware receives
+pixels only; it does not calculate battery percentage or store 24-hour samples.
+For graph bounds left/right/top/bottom and a nonzero value range:
+
+```python
+x = left + round((timestamp - window_start) / (24 * 3600) * (right - left))
+y = bottom - round((value - minimum) / (maximum - minimum) * (bottom - top))
+```
+
+Filter to the time window and clamp resulting coordinates to the plot bounds.
+Handle a flat series by choosing a nonzero value range. For percentage the host
+can use 0–100; for voltage it must choose and label meaningful bounds. Downsample
+to the screen resolution. Use separate runs for data gaps rather than implying
+continuous observations. This is integration guidance only; no meshcoreStation
+implementation is included here.
+
+Example graph payloads (wrap each in the usual USB header):
+
+```text
+F0 4D 43 4F 44 01 10 07                         # capabilities
+F0 4D 43 4F 44 01 11 01 1E 00                   # begin, 30 seconds
+F0 4D 43 4F 44 01 12 08 00 12 00 35             # vertical axis (0,18) to (0,53)
+F0 4D 43 4F 44 01 13 08 00 35 7F 35             # horizontal axis (0,53) to (127,53)
+F0 4D 43 4F 44 01 14 09 04 01 2D 2A 26 54 20 7E 18  # four points
+F0 4D 43 4F 44 01 15 04                         # show
+```
+
+Graph tests cover all line octants, reversed and identical endpoints, exact
+pixel output, display bounds, malformed payloads, all-or-nothing validation,
+83-point chunks, the 256-segment capacity, and clearing/releasing scenes.
