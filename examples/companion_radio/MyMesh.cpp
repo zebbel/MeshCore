@@ -2241,6 +2241,14 @@ void MyMesh::loop() {
     checkCLIRescueCmd();
   } else {
     checkSerialInterface();
+#if defined(ENABLE_HOST_DISPLAY) && defined(ENABLE_USB_INTERFACE) && defined(DISPLAY_CLASS)
+    if (_ui && _serial->isEnabled() && !_serial->isWriteBusy()) {
+      size_t event_len = _ui->peekHostButton(out_frame);
+      if (event_len && _serial->writeFrame(out_frame, event_len) == event_len) {
+        _ui->consumeHostButton();
+      }
+    }
+#endif
   }
 
   // is there are pending dirty contacts write needed?
