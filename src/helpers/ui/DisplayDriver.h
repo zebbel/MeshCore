@@ -105,5 +105,8 @@ public:
     print(temp_str);
   }
   
+  // Optional fixed-cell medium text, used by the host OLED protocol.
+  virtual bool supportsMediumText() const { return false; }
+  virtual void drawMediumText(int x, int y, const char* text) {}
   virtual void endFrame() = 0;
 };
