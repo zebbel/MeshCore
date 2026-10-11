@@ -296,10 +296,11 @@ returns flags 15 (`0x0F`) with graph and button features enabled. Response lengt
 protocol version and graphics revision remain unchanged. Existing clients must
 test capability bits rather than compare the flags byte to a fixed value.
 
-Text stays printable ASCII. The renderer resamples the existing classic font
-from 6x8 cells to 8x12 using nearest-neighbour pixels, preserving blank character
-spacing and descenders. It uses a fixed stack buffer and draws transparent white
-pixels, without changing the normal local UI font or allocating memory per draw.
+Text stays printable ASCII. The renderer uses native monochrome glyphs rasterized from DejaVu Sans Mono
+at 11 pixels into fixed 8x12 cells (baseline 9). It does not stretch the small
+font. Glyphs are stored in a constant 1,140-byte table and draw transparent white
+pixels, without changing the local UI font or allocating memory per draw.
+The font license is included in src/helpers/ui/MediumText-LICENSE.txt.
 
 For medium text, valid bounds are `x + 8*length <= 128` and `y + 12 <= 64`.
 Thus the last allowed y is 52 and the last x for a single character is 120.
@@ -314,5 +315,5 @@ F0 4D 43 4F 44 01 21 02 00 0C 03 33 2E 39 32 56
 ```
 
 Send while a display lease is active, then SHOW. No station-side changes are
-included here. Protocol bounds, capability fallback and glyph scaling are
+included here. Protocol bounds, capability fallback and native glyph rendering are
 covered by the host tests; physical font appearance requires hardware review.
