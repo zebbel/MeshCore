@@ -191,14 +191,23 @@ int main() {
   assert(send(HostDisplay::CAPABILITIES)==HostDisplay::OK && !(reply[10]&8));
   assert(send(HostDisplay::TEXT,{0,0,3,'X'})==HostDisplay::BAD_ARGUMENT);
   d.medium=true;
-  // Scaling preserves cell bounds, blank spacing and descender row.
-  uint8_t glyph[8]={1,0,0,0,0,0,0,16};
+  // Native glyph rendering preserves exact pixels and cell bounds.
+  uint8_t glyph[12]={1,0,0,0,0,0,0,0,0,0,0,64};
   d.pixels.clear(); drawMediumGlyph(d,120,52,glyph);
-  std::set<std::pair<int,int>> medium_pixels={{120,52},{121,52},{120,53},{121,53},{126,63}};
+  std::set<std::pair<int,int>> medium_pixels={{120,52},{126,63}};
   assert(d.pixels==medium_pixels);
   memset(glyph,0,sizeof(glyph));d.pixels.clear();drawMediumGlyph(d,0,0,glyph);
   assert(d.pixels.empty());
-  memset(glyph,0x3F,sizeof(glyph));drawMediumGlyph(d,0,0,glyph);
+  memset(glyph,0xFF,sizeof(glyph));drawMediumGlyph(d,0,0,glyph);
   assert(d.pixels.size()==96 && d.pixels.count({7,11}));
+
+  for (int c=33; c<=126; ++c) {
+    d.pixels.clear(); char text[]={static_cast<char>(c),0};
+    drawStationMediumText(d,120,52,text); assert(!d.pixels.empty());
+  }
+  d.pixels.clear(); drawStationMediumText(d,0,0," "); assert(d.pixels.empty());
+  d.pixels.clear(); drawStationMediumText(d,0,0,"M"); auto native_m=d.pixels;
+  d.pixels.clear(); drawStationMediumText(d,8,0,"M");
+  for(auto pixel:native_m) assert(d.pixels.count({pixel.first+8,pixel.second}));
 
 }
