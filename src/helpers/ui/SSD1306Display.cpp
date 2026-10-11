@@ -104,25 +104,7 @@ void SSD1306Display::endFrame() {
   display.display();
 }
 
-// Capture the existing classic font in a fixed stack buffer, then resample its
-// 6x8 cell to 8x12. No heap allocation or change to the normal text cursor/font.
-class MediumGlyph : public Adafruit_GFX {
-public:
-  uint8_t rows[8] = {};
-  MediumGlyph() : Adafruit_GFX(6, 8) { cp437(true); }
-  void drawPixel(int16_t x, int16_t y, uint16_t color) override {
-    if (x < 0 || x >= 6 || y < 0 || y >= 8) return;
-    if (color) rows[y] |= uint8_t(1 << x);
-    else rows[y] &= uint8_t(~(1 << x));
-  }
-};
-
+// Draw native 8x12 glyphs without resampling the small font.
 void SSD1306Display::drawMediumText(int x, int y, const char* text) {
-  MediumGlyph glyph;
-  while (*text) {
-    memset(glyph.rows, 0, sizeof(glyph.rows));
-    glyph.drawChar(0, 0, static_cast<unsigned char>(*text++), 1, 0, 1);
-    drawMediumGlyph(*this, x, y, glyph.rows);
-    x += 8;
-  }
+  drawStationMediumText(*this, x, y, text);
 }
