@@ -4,11 +4,14 @@
 #include <set>
 #include <utility>
 #include "examples/companion_radio/HostDisplay.h"
+#include "src/helpers/ui/MediumText.h"
 ColorVal UIColor::window_bkg = 0;
 ColorVal UIColor::primary_txt = 1;
 class Screen : public DisplayDriver {
 public:
   int frames = 0;
+  bool medium = true;
+  int medium_calls = 0;
   bool on = false;
   std::string drawn;
   std::set<std::pair<int,int>> pixels;
@@ -22,6 +25,11 @@ public:
   void setColor(ColorVal) override {}
   void setCursor(int,int) override {}
   void print(const char* s) override { drawn += s; }
+  bool supportsMediumText() const override { return medium; }
+  void drawMediumText(int x,int y,const char* s) override {
+    assert(x>=0 && y>=0 && x+strlen(s)*8<=128 && y+12<=64);
+    ++medium_calls; drawn += s;
+  }
   void fillRect(int x,int y,int w,int h) override { assert(x>=0 && x<128 && y>=0 && y<64 && w==1 && h==1); pixels.insert({x,y}); }
   void drawRect(int,int,int,int) override {}
   void drawXbm(int,int,const uint8_t*,int,int) override {}
@@ -90,7 +98,7 @@ int main() {
   req[5]=2;
   assert(h.handle(req,8,reply,&d,0)==9 && reply[8]==HostDisplay::UNSUPPORTED);
   assert(send(HostDisplay::CAPABILITIES)==HostDisplay::OK);
-  assert(reply[9]==1 && reply[10]==7 && reply[11]==0 && reply[12]==1 && reply[13]==83);
+  assert(reply[9]==1 && reply[10]==15 && reply[11]==0 && reply[12]==1 && reply[13]==83);
   assert(send(HostDisplay::CLEAR)==HostDisplay::OK);
   // All octants, reversed endpoints and degenerate point.
   for (auto end : std::vector<std::pair<uint8_t,uint8_t>>{{20,12},{12,20},{8,20},{0,12},{0,8},{8,0},{12,0},{20,8},{10,10},{10,20},{20,10}}) {
@@ -166,5 +174,31 @@ int main() {
   // Sequence wraps modulo 65536. Every accepted event advances it even on overflow.
   for(int i=0;i<65536;i++) { h.recordButton(1,i); h.peekButton(event); h.consumeButton(); }
   assert(event[10]==16 && event[11]==0);
+
+  now=0; send(HostDisplay::BEGIN,{30,0});
+  assert(send(HostDisplay::CAPABILITIES)==HostDisplay::OK && (reply[10]&8));
+  std::vector<uint8_t> medium_text={0,52,3};
+  medium_text.insert(medium_text.end(),16,'M');
+  assert(send(HostDisplay::TEXT,medium_text)==HostDisplay::OK);
+  assert(d.medium_calls==0); // buffered until SHOW
+  send(HostDisplay::SHOW); assert(d.medium_calls==1 && d.drawn==std::string(16,'M'));
+  medium_text.push_back('M'); assert(send(HostDisplay::TEXT,medium_text)==HostDisplay::BAD_ARGUMENT);
+  assert(send(HostDisplay::TEXT,{0,53,3,'X'})==HostDisplay::BAD_ARGUMENT);
+  assert(send(HostDisplay::TEXT,{121,0,3,'X'})==HostDisplay::BAD_ARGUMENT);
+  assert(send(HostDisplay::TEXT,{120,52,3,'X'})==HostDisplay::OK);
+  assert(send(HostDisplay::TEXT,{0,0,4,'X'})==HostDisplay::BAD_ARGUMENT);
+  d.medium=false;
+  assert(send(HostDisplay::CAPABILITIES)==HostDisplay::OK && !(reply[10]&8));
+  assert(send(HostDisplay::TEXT,{0,0,3,'X'})==HostDisplay::BAD_ARGUMENT);
+  d.medium=true;
+  // Scaling preserves cell bounds, blank spacing and descender row.
+  uint8_t glyph[8]={1,0,0,0,0,0,0,16};
+  d.pixels.clear(); drawMediumGlyph(d,120,52,glyph);
+  std::set<std::pair<int,int>> medium_pixels={{120,52},{121,52},{120,53},{121,53},{126,63}};
+  assert(d.pixels==medium_pixels);
+  memset(glyph,0,sizeof(glyph));d.pixels.clear();drawMediumGlyph(d,0,0,glyph);
+  assert(d.pixels.empty());
+  memset(glyph,0x3F,sizeof(glyph));drawMediumGlyph(d,0,0,glyph);
+  assert(d.pixels.size()==96 && d.pixels.count({7,11}));
 
 }
