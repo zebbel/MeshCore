@@ -113,7 +113,7 @@ public:
     if (op == CAPABILITIES) {
       resp[8] = OK;
       resp[9] = 1; // graphics revision
-      resp[10] = 7; // bit 0: LINE, bit 1: POLYLINE, bit 2: button gestures
+      resp[10] = 7 | (display->supportsMediumText() ? 8 : 0); // bit 3: medium text
       resp[11] = MAX_SEGMENTS & 0xFF;
       resp[12] = MAX_SEGMENTS >> 8;
       resp[13] = MAX_POINTS;
@@ -135,8 +135,12 @@ public:
       } else if (op == TEXT) {
         unsigned n = len - 11;
         uint8_t x = req[8], y = req[9], size = req[10];
-        if (size < 1 || size > 2 || x + n * 6 * size > unsigned(display->width()) ||
-            y + 8 * size > display->height()) return 9;
+        // Size IDs 1 and 2 stay compatible; 3 is medium (8x12), not 3x.
+        if (size < 1 || size > 3 || (size == 3 && !display->supportsMediumText())) return 9;
+        unsigned cell_w = size == 3 ? 8 : 6 * size;
+        unsigned cell_h = size == 3 ? 12 : 8 * size;
+        if (x + n * cell_w > unsigned(display->width()) ||
+            y + cell_h > unsigned(display->height())) return 9;
         for (size_t i = 11; i < len; i++) if (req[i] < 32 || req[i] > 126) return 9;
         if (count == MAX_ITEMS) { resp[8] = FULL; return 9; }
         TextItem& item = pending[count++];
@@ -164,9 +168,13 @@ public:
         display->setColor(UIColor::primary_txt);
         for (unsigned i = 0; i < segment_count; i++) drawLine(*display, segments[i]);
         for (unsigned i = 0; i < count; i++) {
-          display->setTextSize(pending[i].size);
-          display->setCursor(pending[i].x, pending[i].y);
-          display->print(pending[i].text);
+          if (pending[i].size == 3) {
+            display->drawMediumText(pending[i].x, pending[i].y, pending[i].text);
+          } else {
+            display->setTextSize(pending[i].size);
+            display->setCursor(pending[i].x, pending[i].y);
+            display->print(pending[i].text);
+          }
         }
         display->endFrame();
       }
