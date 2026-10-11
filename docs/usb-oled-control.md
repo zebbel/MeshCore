@@ -62,9 +62,9 @@ INFO success adds five bytes at offsets 9–13:
 `width=128, height=64, maximum_items=16, maximum_text_bytes=21, active=0/1`.
 
 TEXT uses top-left pixel coordinates and built-in printable ASCII (32–126),
-without a terminating NUL. Size 1 uses 6×8 cells; size 2 uses 12×16 cells.
-Text must be nonempty and fit completely: `x + length*6*size <= 128`,
-`y + 8*size <= 64`. No text wrapping, newlines or UTF-8 in v1. Use several TEXT
+without a terminating NUL. Size 1 uses 6×8 cells; size 2 uses 12×16 cells. Size ID 3 is medium, with 8×12 cells when capability bit 3 is set.
+Text must be nonempty and fit completely: `x + length*cell_width <= 128`,
+`y + cell_height <= 64`. No text wrapping, newlines or UTF-8 in v1. Use several TEXT
 commands for multiple lines. Items render in submission order with transparent
 text backgrounds. For replacement, CLEAR and resubmit the complete scene before
 SHOW. Maximum 16 items per scene. Invalid commands leave the scene unchanged.
@@ -282,3 +282,37 @@ Host tests cover all four event types, exact wire fields, queue overflow,
 retention until successful write consumption, subscription validation, redraw
 compatibility, lease cleanup and sequence wrap. Physical button timing and
 USB delivery require on-device testing after compilation.
+
+
+## Medium text
+
+TEXT's existing size field now accepts ID **3** for medium text. IDs **1**
+(small, 6x8) and **2** (large, 12x16) are unchanged. Do not treat ID 3 as a
+numeric scale factor. The OLED uses an 8x12 fixed cell, fitting 16 characters
+per full-width line. Five full lines fit at y=0,12,24,36,48.
+
+CAPABILITIES flags bit 3 (`0x08`) advertises medium support; the Heltec OLED
+returns flags 15 (`0x0F`) with graph and button features enabled. Response length,
+protocol version and graphics revision remain unchanged. Existing clients must
+test capability bits rather than compare the flags byte to a fixed value.
+
+Text stays printable ASCII. The renderer resamples the existing classic font
+from 6x8 cells to 8x12 using nearest-neighbour pixels, preserving blank character
+spacing and descenders. It uses a fixed stack buffer and draws transparent white
+pixels, without changing the normal local UI font or allocating memory per draw.
+
+For medium text, valid bounds are `x + 8*length <= 128` and `y + 12 <= 64`.
+Thus the last allowed y is 52 and the last x for a single character is 120.
+A driver without medium support rejects size 3 with BAD_ARGUMENT. Old firmware
+also rejects it, so meshcoreStation should offer Small/Medium/Large only after
+checking capabilities and map these labels to IDs 1/3/2 respectively.
+
+Example TEXT payload: request ID 0x21, position (0,12), medium `3.92V`:
+
+```text
+F0 4D 43 4F 44 01 21 02 00 0C 03 33 2E 39 32 56
+```
+
+Send while a display lease is active, then SHOW. No station-side changes are
+included here. Protocol bounds, capability fallback and glyph scaling are
+covered by the host tests; physical font appearance requires hardware review.
