@@ -18,32 +18,34 @@ int main() {
   assert(!m.setPositionSetting("position_channel", "Other"));
   assert(strcmp(m._position.config.name, "Family") == 0);
   store.fs.fail = false;
-  m.requestButtonPosition(); assert(sensors.enabled && m._position.pending);
-  m.loopButtonPosition(); assert(m.sent == 0);
+  m.requestButtonPosition(); assert(!sensors.enabled && m._position.pending);
+  m.loopButtonPosition();
+  assert(m.sent == 0 && !m._position.pending && strcmp(m._position.status, "no_fix") == 0);
   sensors.gps.valid = true;
-  m.loopButtonPosition(); assert(m.sent == 0);
-  ++sensors.gps.timestamp; m.loopButtonPosition();
-  assert(m.sent == 1 && !sensors.enabled);
+  m.requestButtonPosition(); m.loopButtonPosition();
+  assert(m.sent == 1 && !sensors.enabled); // existing fix, GPS stays off
   assert(m.lastText == "position 52.123456, 13.123456" && m.lastKey == 42);
   m.requestButtonPosition(); assert(!m._position.pending); // cooldown
   now += 10000;
   // Moving the selected channel cannot redirect the destination.
   std::swap(m.channels[1], m.channels[2]);
-  m.requestButtonPosition(); ++sensors.gps.timestamp; m.loopButtonPosition();
+  m.requestButtonPosition(); m.loopButtonPosition();
   assert(m.sent == 2 && m.lastKey == 42);
   now += 10000;
   m.requestButtonPosition(); m.channels[2].channel.secret[0] = 88;
-  ++sensors.gps.timestamp; m.loopButtonPosition();
+  m.loopButtonPosition();
   assert(m.sent == 2 && strcmp(m._position.status, "channel_missing") == 0);
   m.channels[2].channel.secret[0] = 42;
-  m.requestButtonPosition(); now += 120000; m.loopButtonPosition();
+  sensors.gps.valid = false;
+  m.requestButtonPosition(); m.loopButtonPosition();
   assert(m.sent == 2 && !sensors.enabled && strcmp(m._position.status, "no_fix") == 0);
+  sensors.gps.valid = true;
   sensors.enabled = true;
-  m.requestButtonPosition(); ++sensors.gps.timestamp; m.loopButtonPosition();
+  m.requestButtonPosition(); m.loopButtonPosition();
   assert(m.sent == 3 && sensors.enabled); // GPS was already on
   now += 10000; m.requestButtonPosition();
   assert(m.setPositionSetting("position_button", "0"));
-  ++sensors.gps.timestamp; m.loopButtonPosition(); assert(m.sent == 3);
+  m.loopButtonPosition(); assert(m.sent == 3);
   assert(!m.setPositionSetting("position_status", "queued"));
   // Reject default Public even when renamed, hashtag names, duplicates.
   uint8_t pub[32] = {0x8b,0x33,0x87,0xe9,0xc5,0xcd,0xea,0x6a,0xc9,0xe5,0xed,0xba,0xa1,0x15,0xcd,0x72};
@@ -68,6 +70,26 @@ int main() {
   auto command = [&](uint8_t slot, const char* text) {
     return phone.handlePositionButtonCommand(slot, text, strlen(text));
   };
+  assert(phone.isStatusLedEnabled());
+  assert(command(0, "/led off") == 1); // any channel, no destination selection
+  assert(!phone.isStatusLedEnabled());
+  MyMesh ledReboot(phoneStore); ledReboot.loadPositionSettings();
+  assert(!ledReboot.isStatusLedEnabled()); // survives reboot without position record
+  assert(command(0, "/led on extra") == -1);
+  assert(command(0, "/led") == -1);
+  assert(command(0, "/led-typo off") == -1);
+  phoneStore.fs.fail = true;
+  assert(command(0, "/led on") == -1);
+  assert(!phone.isStatusLedEnabled()); // failed save leaves state intact
+  phoneStore.fs.fail = false;
+  assert(command(0, " \t/led on\r\n") == 1);
+  assert(phone.isStatusLedEnabled());
+  MyMesh ledOnReboot(phoneStore); ledOnReboot.loadPositionSettings();
+  assert(ledOnReboot.isStatusLedEnabled());
+  (*phoneStore.fs.files["/status_led"])[4] = 9;
+  MyMesh invalidLed(phoneStore); invalidLed.loadPositionSettings();
+  assert(invalidLed.isStatusLedEnabled()); // invalid record defaults to on
+  assert(phone.sent == 0);
   assert(command(2, "/position-button on") == 1);
   assert(phone._position.config.enabled);
   ChannelDetails chosen;

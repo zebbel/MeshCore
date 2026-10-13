@@ -388,6 +388,15 @@ void UITask::userLedHandler() {
   static int next_change = 0;
   static int last_increment = 0;
 
+#ifdef ENABLE_POSITION_BUTTON
+  if (!the_mesh.isStatusLedEnabled()) {
+    digitalWrite(PIN_STATUS_LED, !LED_STATE_ON);
+    state = 0;
+    next_change = millis();
+    return;
+  }
+#endif
+
   int cur_time = millis();
   if (cur_time > next_change) {
     if (state == 0) {

@@ -16,23 +16,11 @@ struct PositionButtonState {
   PositionButtonConfig config;
   const char* status = "disabled";
   bool pending = false;
-  bool restoreGpsOff = false;
   bool hasSent = false;
-  uint32_t started = 0, lastSent = 0, baseline = 0;
+  uint32_t lastSent = 0;
 
   bool coolingDown(uint32_t now) const {
     return hasSent && uint32_t(now - lastSent) < 10000;
-  }
-  bool timedOut(uint32_t now) const {
-    return pending && uint32_t(now - started) >= 120000;
-  }
-  bool freshFix(bool valid, uint32_t timestamp) {
-    if (!valid || timestamp < 1577836800UL) return false;
-    // Observe advancing GPS time after this button request, never a cached fix.
-    if (!baseline) { baseline = timestamp; return false; }
-    if (timestamp > baseline && timestamp - baseline <= 120) return true;
-    if (timestamp != baseline) baseline = timestamp;
-    return false;
   }
   static bool validName(const char* name) {
     size_t n = strlen(name);

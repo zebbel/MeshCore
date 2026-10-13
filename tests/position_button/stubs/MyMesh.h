@@ -63,12 +63,15 @@ enum class UIEventType { ack };
 struct FakeUI { int acks = 0; void notify(UIEventType) { ++acks; } };
 class MyMesh {
 public:
+  bool _statusLedEnabled = true;
   PositionButtonState _position;
   DataStore* _store;
   FakeUI* _ui = nullptr;
   bool _cli_rescue = false, sendOK = true;
   struct { char node_name[32] = "test"; } _prefs;
   ChannelDetails channels[40];
+  struct FakeClock { uint32_t getCurrentTimeUnique() { return 1800000000 + now; } } clock;
+  FakeClock* getRTCClock() { return &clock; }
   int sent = 0; std::string lastText; uint8_t lastKey = 0;
   explicit MyMesh(DataStore& store): _store(&store) {}
   bool getChannel(int i, ChannelDetails& ch) { if (i < 0 || i >= 40) return false; ch = channels[i]; return true; }
@@ -82,6 +85,7 @@ public:
   bool savePositionSettings(const PositionButtonConfig&);
   bool setPositionSetting(const char*, const char*);
   void finishButtonPosition(const char*);
+  bool isStatusLedEnabled() const { return _statusLedEnabled; }
   void requestButtonPosition();
   int handlePositionButtonCommand(uint8_t, const char*, size_t);
   void loopButtonPosition();

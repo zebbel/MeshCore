@@ -137,9 +137,11 @@ validates the Heltec application/partitions and merged image, validates the UF2
 family/address bounds and DFU archive, updates names/manifests, and writes
 checksums. All files are staged until both builds and validation succeed.
 
-Previous files for the same version/SHA are removed when building starts; other
-versions and unrelated files are retained. Builds in the same release directory
-are locked. Generated `release/` files are ignored by Git. It runs `git pull --ff-only` before building. It does not change branches or flash
+After a successful pull and preflight checks, the entire `release/` directory
+is deleted and recreated before compilation. This removes all older versions,
+checksums, hidden files and subfolders. Keep anything you want to retain outside
+`release/`. The repository directory is locked so concurrent builds cannot erase
+each other's output. Generated `release/` files are ignored by Git. It runs `git pull --ff-only` before building. It does not change branches or flash
 either device; uploading requires `--release`.
 
 ## Build and publish a GitHub release automatically

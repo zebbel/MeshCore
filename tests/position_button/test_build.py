@@ -64,6 +64,10 @@ else:
 ''')
     compiler.chmod(0o755)
     env = dict(os.environ, STATION_PIO=str(compiler), FIRMWARE_VERSION='v1.17.1')
+    stale = repo / 'release' / 'old-version'
+    stale.mkdir(parents=True)
+    (stale / 'old-firmware.bin').write_bytes(b'old')
+    (repo / 'release' / '.old-manifest.json').write_text('{}')
     subprocess.run(['bash', str(repo / 'build-station.sh')], check=True, env=env)
     release = repo / 'release'
     hname = f'heltec_v4_companion_radio_usb-v1.17.1-{commit}-meshcoreStation-v1.0.0'
@@ -86,11 +90,11 @@ else:
     assert b'Building Heltec' not in failed_pull.stdout
     assert all((release / name).exists() for name in outputs)
     subprocess.run(['git', '-C', str(repo), 'remote', 'set-url', 'origin', str(remote)], check=True)
-    # A failed rebuild must not leave this version's old files looking current.
-    (release / 'unrelated.txt').write_text('retain')
+    # A failed rebuild must leave no current or older release artifacts.
+    (release / 'old-firmware.bin').write_text('remove')
     result = subprocess.run(['bash', str(repo / 'build-station.sh')],
                             env=dict(env, FAIL_T1000='1'), capture_output=True)
     assert result.returncode != 0
     assert not any((release / name).exists() for name in outputs)
-    assert (release / 'unrelated.txt').read_text() == 'retain'
+    assert list(release.iterdir()) == []
 print('Root build wrapper, upstream naming, manifests, checksums and failure cleanup passed.')

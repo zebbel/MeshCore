@@ -20,17 +20,6 @@ int main() {
   assert(!PositionButtonState::validName("12345678901234567890123456789012"));
   PositionButtonState state;
   assert(!state.config.enabled && !state.pending);
-  assert(!state.freshFix(false, 1800000000));
-  assert(!state.freshFix(true, 0));
-  assert(!state.freshFix(true, 1800000000));
-  assert(!state.freshFix(true, 1800000000)); // cached fix
-  assert(state.freshFix(true, 1800000001));
-  assert(!state.freshFix(true, 1800086400)); // slept overnight: rebaseline
-  assert(state.freshFix(true, 1800086401));
-  state.pending = true;
-  state.started = UINT32_MAX - 60000;
-  assert(!state.timedOut(59998));
-  assert(state.timedOut(59999)); // wrap-safe 120 second timeout
   state.hasSent = true;
   state.lastSent = UINT32_MAX - 5000;
   assert(state.coolingDown(4998));

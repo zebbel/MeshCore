@@ -33,6 +33,15 @@ bool MyMesh::findPositionChannel(ChannelDetails& ch) {
 }
 
 void MyMesh::loadPositionSettings() {
+  // Independent record keeps existing position settings compatible.
+  auto led = _store->openRead("/status_led");
+  uint8_t record[5];
+  if (led && led.size() == sizeof(record)
+      && led.read(record, sizeof(record)) == sizeof(record)
+      && memcmp(record, "LED1", 4) == 0 && record[4] <= 1) {
+    _statusLedEnabled = record[4] != 0;
+  }
+  led.close();
   auto f = _store->openRead(SETTINGS_FILE);
   if (!f) return;
   PositionButtonConfig c;
@@ -70,6 +79,27 @@ int MyMesh::handlePositionButtonCommand(uint8_t channel_idx, const char* text, s
   auto space = [](char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; };
   while (len && space(*text)) { ++text; --len; }
   while (len && space(text[len - 1])) --len;
+  // App-to-device commands only: consume even malformed LED commands locally.
+  if (len >= 4 && memcmp(text, "/led", 4) == 0) {
+    if (len == 4 || !space(text[4])) return -1;
+    text += 4; len -= 4;
+    while (len && space(*text)) { ++text; --len; }
+    bool enabled;
+    if (len == 2 && memcmp(text, "on", 2) == 0) enabled = true;
+    else if (len == 3 && memcmp(text, "off", 3) == 0) enabled = false;
+    else return -1;
+    auto fs = _store->getPrimaryFS();
+    fs->remove("/status_led.tmp");
+    auto f = fs->open("/status_led.tmp", FILE_O_WRITE);
+    if (!f) return -1;
+    const uint8_t record[] = {'L', 'E', 'D', '1', uint8_t(enabled)};
+    bool ok = f.write(record, sizeof(record)) == sizeof(record);
+    f.close();
+    if (ok) ok = fs->rename("/status_led.tmp", "/status_led");
+    if (!ok) { fs->remove("/status_led.tmp"); return -1; }
+    _statusLedEnabled = enabled;
+    return 1;
+  }
   static const char prefix[] = "/position-button";
   const size_t prefix_len = sizeof(prefix) - 1;
   if (len < prefix_len || memcmp(text, prefix, prefix_len) != 0) return 0;
@@ -146,8 +176,6 @@ bool MyMesh::setPositionSetting(const char* name, const char* value) {
 
 void MyMesh::finishButtonPosition(const char* status) {
   _position.pending = false;
-  if (_position.restoreGpsOff) sensors.setSettingValue("gps", "0");
-  _position.restoreGpsOff = false;
   _position.status = status;
 }
 
@@ -158,11 +186,6 @@ void MyMesh::requestButtonPosition() {
     _position.status = "channel_missing";
     return;
   }
-  auto gps = sensors.getLocationProvider();
-  _position.baseline = gps->isValid() ? (uint32_t)gps->getTimestamp() : 0;
-  _position.restoreGpsOff = strcmp(sensors.getSettingValue(0), "0") == 0;
-  if (_position.restoreGpsOff) sensors.setSettingValue("gps", "1");
-  _position.started = millis();
   _position.pending = true;
   _position.status = "waiting";
 }
@@ -170,13 +193,9 @@ void MyMesh::requestButtonPosition() {
 void MyMesh::loopButtonPosition() {
   if (!_position.pending) return;
   if (_cli_rescue) { finishButtonPosition("cancelled"); return; }
-  if (_position.timedOut(millis())) { finishButtonPosition("no_fix"); return; }
-  if (strcmp(sensors.getSettingValue(0), "0") == 0) {
-    finishButtonPosition("gps_off");
-    return;
-  }
   auto gps = sensors.getLocationProvider();
-  if (!_position.freshFix(gps->isValid(), gps->isValid() ? (uint32_t)gps->getTimestamp() : 0)) return;
+  // Use the currently available position without starting GPS or waiting for it.
+  if (!gps || !gps->isValid()) { finishButtonPosition("no_fix"); return; }
   ChannelDetails ch;
   if (!findPositionChannel(ch)) { finishButtonPosition("channel_missing"); return; }
   char text[64];
@@ -184,8 +203,8 @@ void MyMesh::loopButtonPosition() {
     finishButtonPosition("no_fix");
     return;
   }
-  // GPS time is valid here, including after a reboot with no phone connected.
-  bool sent = sendGroupMessage((uint32_t)gps->getTimestamp(), ch.channel,
+  // Timestamp the message now, even when the position has not changed.
+  bool sent = sendGroupMessage(getRTCClock()->getCurrentTimeUnique(), ch.channel,
                                _prefs.node_name, text, strlen(text));
   if (sent) {
     _position.hasSent = true;

@@ -102,6 +102,7 @@ public:
   void handleCmdFrame(size_t len);
   bool advert();
 #ifdef ENABLE_POSITION_BUTTON
+  bool isStatusLedEnabled() const { return _statusLedEnabled; }
   void requestButtonPosition();
   int handlePositionButtonCommand(uint8_t channel_idx, const char* text, size_t len);
 #endif
@@ -216,6 +217,7 @@ private:
   void saveContacts();
 
 #ifdef ENABLE_POSITION_BUTTON
+  bool _statusLedEnabled = true;
   PositionButtonState _position;
   void loadPositionSettings();
   bool savePositionSettings(const PositionButtonConfig& config);

@@ -32,7 +32,6 @@ update_source() {
 update_source
 
 output_dir="$repo_dir/release"
-mkdir -p -- "$output_dir"
 cd -- "$repo_dir"
 # Match upstream build.sh: environment name, firmware version and short Git SHA.
 version="${FIRMWARE_VERSION:-$(python3 - <<'VERSION'
@@ -81,8 +80,8 @@ else
 fi
 command -v python3 >/dev/null
 command -v flock >/dev/null
-# Lock the output directory without leaving a lock file beside the release.
-exec 9<"$output_dir"
+# Lock the stable repository directory: release/ is deleted below.
+exec 9<"$repo_dir"
 flock -n 9 || { printf 'Another Station build is running here.\n' >&2; exit 1; }
 
 heltec=heltec_v4_companion_radio_usb
@@ -92,8 +91,9 @@ merged_name="$heltec-$version-$commit_hash-merged-meshcoreStation-$station_versi
 t1000_name="t1000e_companion_radio_ble-$suffix"
 outputs=("$heltec_name.bin" "$heltec_name.json" "$merged_name.bin"
          "$t1000_name.uf2" "$t1000_name.zip" "$t1000_name.uf2.sha256" "$t1000_name.zip.sha256")
-# Remove only this version's managed outputs; retain older versions.
-for file in "${outputs[@]}"; do rm -f -- "$output_dir/$file"; done
+# Start each build with a completely empty release directory.
+rm -rf -- "$output_dir"
+mkdir -p -- "$output_dir"
 staging="$(mktemp -d "$output_dir/.station-build.XXXXXX")"
 trap 'rm -rf -- "$staging"' EXIT
 cd -- "$repo_dir"

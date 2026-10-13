@@ -53,8 +53,22 @@ than transmitted. Public/default-key, empty-key and hashtag channels cannot be
 selected. Save failures or invalid destinations return an app error and leave
 the previous configuration intact. No local chat reply is synthesized.
 
-Go outdoors and press once to test. The firmware waits up to two minutes for a
-fresh GPS fix, then queues `position <latitude>, <longitude>` to that channel.
+Press once to queue `position <latitude>, <longitude>` using the currently
+available valid GPS position. It does not wait for a new fix or switch GPS on.
+If no valid position is available, no message is sent (`no_fix`).
+
+### Four-second LED blink (v1.0.2 and later)
+
+Send `/led off` in any channel chat on the connected T1000-E to disable the
+periodic status LED blink, or `/led on` to enable it again. The default is on.
+The setting survives restarts and is independent of the position-button setting.
+Disabling it also suppresses the longer periodic unread-message blink. The
+shutdown indication remains unchanged.
+
+These commands are handled locally and never transmitted over LoRa, including
+invalid commands beginning with `/led`. They return the normal app success/error
+response; no chat reply is generated. Direct messages are not supported for
+configuration. Rebuild and flash this update before using the commands.
 
 ### Alternative: custom-variable interface
 
@@ -116,16 +130,16 @@ GPS request. Re-importing the same key restores access to the same destination.
 - Four presses: existing GPS on/off toggle.
 - Long: existing shutdown / startup CLI-rescue function.
 
-The request powers GPS on if needed and waits for advancing valid GPS time after
-the press (up to 120 seconds), so an old cached fix is not transmitted. GPS returns
-to off afterwards if the request turned it on. Turning GPS off during a request
-cancels it. Normal radio/BLE processing continues during the wait. Presses while
-waiting are ignored, and successful sends have a 10-second cooldown.
+The request uses the GPS provider's current valid position, even if its timestamp
+has not advanced since the button press. GPS stays in its existing on/off state.
+There is no acquisition wait or timeout. The chat message uses the current device
+clock, not the cached fix timestamp. Requests already pending are ignored, and
+successful sends have a 10-second cooldown.
 
 `queued` means accepted into the local transmit queue, not confirmed delivery.
 An acknowledgement chirp accompanies this event if the buzzer is enabled.
-No message is sent on timeout (`no_fix`), missing channel (`channel_missing`),
-GPS cancellation (`gps_off`) or transmit allocation failure (`send_failed`).
+No message is sent without a valid position (`no_fix`), with a missing channel
+(`channel_missing`), or on transmit allocation failure (`send_failed`).
 `storage_error` indicates settings were not saved. The last status is available
 through the custom settings/helper and is not retained across reboots. The app
 may not show these device-originated messages as sent items in its own history.
