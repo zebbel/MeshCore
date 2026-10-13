@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -29,6 +30,14 @@ struct PositionButtonState {
       if ((uint8_t)name[i] < 32 || name[i] == ',' || name[i] == ':') return false;
     }
     return true;
+  }
+  static bool formatStored(char* dest, size_t size, double lat, double lon) {
+    // Same position used by adverts. Zero/zero is the unset default.
+    // Ordered bounds also reject NaN before any integer conversion.
+    if (!(lat >= -90.0 && lat <= 90.0 && lon >= -180.0 && lon <= 180.0)
+        || (lat == 0.0 && lon == 0.0)) return false;
+    return format(dest, size, (int32_t)lround(lat * 1000000.0),
+                  (int32_t)lround(lon * 1000000.0));
   }
   static bool format(char* dest, size_t size, int32_t lat, int32_t lon) {
     if (lat < -90000000 || lat > 90000000 || lon < -180000000 || lon > 180000000) return false;

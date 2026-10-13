@@ -53,9 +53,11 @@ than transmitted. Public/default-key, empty-key and hashtag channels cannot be
 selected. Save failures or invalid destinations return an app error and leave
 the previous configuration intact. No local chat reply is synthesized.
 
-Press once to queue `position <latitude>, <longitude>` using the currently
-available valid GPS position. It does not wait for a new fix or switch GPS on.
-If no valid position is available, no message is sent (`no_fix`).
+In v1.0.3 and later, press once to queue `position <latitude>, <longitude>` using the currently
+stored device position used for adverts. It does not wait for a new fix or switch
+GPS on, and does not require the receiver to report a valid fix. The stored
+position may be older or manually configured. Unset (0,0), non-finite or
+out-of-range coordinates are not sent (`no_fix`).
 
 ### Four-second LED blink (v1.0.2 and later)
 
@@ -130,8 +132,8 @@ GPS request. Re-importing the same key restores access to the same destination.
 - Four presses: existing GPS on/off toggle.
 - Long: existing shutdown / startup CLI-rescue function.
 
-The request uses the GPS provider's current valid position, even if its timestamp
-has not advanced since the button press. GPS stays in its existing on/off state.
+The request uses `sensors.node_lat` / `sensors.node_lon`, the same stored position
+used for adverts, regardless of the GPS receiver's current fix status. GPS stays in its existing on/off state.
 There is no acquisition wait or timeout. The chat message uses the current device
 clock, not the cached fix timestamp. Requests already pending are ignored, and
 successful sends have a 10-second cooldown.

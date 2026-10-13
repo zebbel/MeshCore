@@ -5,6 +5,7 @@ FakeSensors sensors;
 int main() {
   DataStore store;
   MyMesh m(store);
+  FakeUI feedback; m._ui = &feedback;
   strcpy(m.channels[1].name, "Family"); m.channels[1].channel.secret[0] = 42;
   strcpy(m.channels[2].name, "Other"); m.channels[2].channel.secret[0] = 77;
   assert(!m.setPositionSetting("position_button", "1"));
@@ -21,11 +22,16 @@ int main() {
   m.requestButtonPosition(); assert(!sensors.enabled && m._position.pending);
   m.loopButtonPosition();
   assert(m.sent == 0 && !m._position.pending && strcmp(m._position.status, "no_fix") == 0);
-  sensors.gps.valid = true;
+  assert(feedback.acks == 0); // no beep when no position is available
+  sensors.node_lat = 52.123456; sensors.node_lon = 13.123456;
+  // Receiver still has no valid fix: use the stored advertised coordinates.
+  assert(!sensors.gps.valid);
   m.requestButtonPosition(); m.loopButtonPosition();
-  assert(m.sent == 1 && !sensors.enabled); // existing fix, GPS stays off
+  assert(feedback.acks == 1); // one confirmation only after successful queueing
+  assert(m.sent == 1 && !sensors.enabled); // stored position, GPS stays off
   assert(m.lastText == "position 52.123456, 13.123456" && m.lastKey == 42);
   m.requestButtonPosition(); assert(!m._position.pending); // cooldown
+  assert(feedback.acks == 1);
   now += 10000;
   // Moving the selected channel cannot redirect the destination.
   std::swap(m.channels[1], m.channels[2]);
@@ -36,10 +42,10 @@ int main() {
   m.loopButtonPosition();
   assert(m.sent == 2 && strcmp(m._position.status, "channel_missing") == 0);
   m.channels[2].channel.secret[0] = 42;
-  sensors.gps.valid = false;
+  sensors.node_lat = 91; // invalid stored position must not be transmitted
   m.requestButtonPosition(); m.loopButtonPosition();
   assert(m.sent == 2 && !sensors.enabled && strcmp(m._position.status, "no_fix") == 0);
-  sensors.gps.valid = true;
+  sensors.node_lat = 52.123456;
   sensors.enabled = true;
   m.requestButtonPosition(); m.loopButtonPosition();
   assert(m.sent == 3 && sensors.enabled); // GPS was already on
@@ -47,6 +53,14 @@ int main() {
   assert(m.setPositionSetting("position_button", "0"));
   m.loopButtonPosition(); assert(m.sent == 3);
   assert(!m.setPositionSetting("position_status", "queued"));
+  assert(feedback.acks == 3);
+  assert(m.setPositionSetting("position_button", "1"));
+  m.sendOK = false;
+  m.requestButtonPosition(); m.loopButtonPosition();
+  assert(strcmp(m._position.status, "send_failed") == 0);
+  assert(feedback.acks == 3); // failed transmission allocation must not beep
+  m.sendOK = true;
+
   // Reject default Public even when renamed, hashtag names, duplicates.
   uint8_t pub[32] = {0x8b,0x33,0x87,0xe9,0xc5,0xcd,0xea,0x6a,0xc9,0xe5,0xed,0xba,0xa1,0x15,0xcd,0x72};
   memcpy(m.channels[2].channel.secret, pub, 32);

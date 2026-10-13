@@ -53,6 +53,7 @@ struct FakeGPS {
   long getLongitude() { return lon; }
 };
 struct FakeSensors {
+  double node_lat = 0, node_lon = 0;
   bool enabled = false; FakeGPS gps;
   FakeGPS* getLocationProvider() { return &gps; }
   const char* getSettingValue(int) { return enabled ? "1" : "0"; }

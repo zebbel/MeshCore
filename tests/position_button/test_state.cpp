@@ -18,6 +18,16 @@ int main() {
   assert(!PositionButtonState::validName("Family,Public"));
   assert(!PositionButtonState::validName("Family:1"));
   assert(!PositionButtonState::validName("12345678901234567890123456789012"));
+  assert(PositionButtonState::formatStored(text, sizeof(text), 52.123456, 13.123456));
+  assert(strcmp(text, "position 52.123456, 13.123456") == 0);
+  assert(PositionButtonState::formatStored(text, sizeof(text), -0.000001, -180.0));
+  assert(strcmp(text, "position -0.000001, -180.000000") == 0);
+  assert(PositionButtonState::formatStored(text, sizeof(text), 0.0, 13.0));
+  assert(PositionButtonState::formatStored(text, sizeof(text), 52.0, 0.0));
+  assert(!PositionButtonState::formatStored(text, sizeof(text), 0.0, 0.0));
+  assert(!PositionButtonState::formatStored(text, sizeof(text), NAN, 13.0));
+  assert(!PositionButtonState::formatStored(text, sizeof(text), 52.0, INFINITY));
+  assert(!PositionButtonState::formatStored(text, sizeof(text), 91.0, 13.0));
   PositionButtonState state;
   assert(!state.config.enabled && !state.pending);
   state.hasSent = true;

@@ -1,6 +1,5 @@
 #ifdef ENABLE_POSITION_BUTTON
 #include "MyMesh.h"
-#include <helpers/sensors/LocationProvider.h>
 
 namespace {
 const char* const SETTINGS_FILE = "/position_button";
@@ -193,13 +192,10 @@ void MyMesh::requestButtonPosition() {
 void MyMesh::loopButtonPosition() {
   if (!_position.pending) return;
   if (_cli_rescue) { finishButtonPosition("cancelled"); return; }
-  auto gps = sensors.getLocationProvider();
-  // Use the currently available position without starting GPS or waiting for it.
-  if (!gps || !gps->isValid()) { finishButtonPosition("no_fix"); return; }
   ChannelDetails ch;
   if (!findPositionChannel(ch)) { finishButtonPosition("channel_missing"); return; }
   char text[64];
-  if (!PositionButtonState::format(text, sizeof(text), gps->getLatitude(), gps->getLongitude())) {
+  if (!PositionButtonState::formatStored(text, sizeof(text), sensors.node_lat, sensors.node_lon)) {
     finishButtonPosition("no_fix");
     return;
   }
