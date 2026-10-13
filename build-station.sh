@@ -7,6 +7,7 @@ if [[ ! -f "$repo_dir/platformio.ini" || ! -f "$repo_dir/scripts/station_release
   printf 'Run the build-station.sh inside your MeshCore checkout.\n' >&2
   exit 1
 fi
+build_args=("$@")
 publish_release=false
 if [[ $# == 1 && "$1" == '--release' ]]; then
   publish_release=true
@@ -16,6 +17,20 @@ if [[ $# != 0 ]]; then
   printf 'Usage: bash %s [--release]\nBuild only by default; --release also publishes to GitHub.\n' "$0" >&2
   exit 2
 fi
+# Keep pull/restart in one parsed function: Git can replace this script itself.
+update_source() {
+  cd -- "$repo_dir"
+  local previous_head
+  previous_head="$(git rev-parse HEAD)"
+  printf 'Updating source with git pull --ff-only\n'
+  git pull --ff-only || return $?
+  if [[ "$(git rev-parse HEAD)" != "$previous_head" ]]; then
+    # Run the newly pulled script, retaining --release when requested.
+    exec bash "$repo_dir/build-station.sh" "${build_args[@]}"
+  fi
+}
+update_source
+
 output_dir="$repo_dir/release"
 mkdir -p -- "$output_dir"
 cd -- "$repo_dir"

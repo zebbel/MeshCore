@@ -21,6 +21,10 @@ with tempfile.TemporaryDirectory(prefix='dual build ') as directory:
     subprocess.run(['git', 'init', '-q', str(repo)], check=True)
     subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
                     'commit', '--allow-empty', '-qm', 'Fixture'], check=True)
+    remote = parent / 'remote.git'
+    subprocess.run(['git', 'init', '--bare', '-q', str(remote)], check=True)
+    subprocess.run(['git', '-C', str(repo), 'remote', 'add', 'origin', str(remote)], check=True)
+    subprocess.run(['git', '-C', str(repo), 'push', '-qu', 'origin', 'HEAD'], check=True)
     commit = subprocess.check_output(['git', '-C', str(repo), 'rev-parse', '--short', 'HEAD'], text=True).strip()
     for name in ('station_release.py', 'verify-station-build.py'):
         shutil.copy(ROOT / 'scripts' / name, repo / 'scripts' / name)
@@ -75,6 +79,13 @@ else:
     for ext in ('.uf2', '.zip'):
         name = tname + ext
         assert (release / (name + '.sha256')).read_text() == hashlib.sha256((release / name).read_bytes()).hexdigest() + '  ' + name + '\n'
+    # Failed pull must stop before compilation or deleting existing artifacts.
+    subprocess.run(['git', '-C', str(repo), 'remote', 'set-url', 'origin', str(parent / 'missing.git')], check=True)
+    failed_pull = subprocess.run(['bash', str(repo / 'build-station.sh')], env=env, capture_output=True)
+    assert failed_pull.returncode != 0
+    assert b'Building Heltec' not in failed_pull.stdout
+    assert all((release / name).exists() for name in outputs)
+    subprocess.run(['git', '-C', str(repo), 'remote', 'set-url', 'origin', str(remote)], check=True)
     # A failed rebuild must not leave this version's old files looking current.
     (release / 'unrelated.txt').write_text('retain')
     result = subprocess.run(['bash', str(repo / 'build-station.sh')],

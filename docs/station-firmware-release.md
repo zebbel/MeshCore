@@ -139,8 +139,8 @@ checksums. All files are staged until both builds and validation succeed.
 
 Previous files for the same version/SHA are removed when building starts; other
 versions and unrelated files are retained. Builds in the same release directory
-are locked. Generated `release/` files are ignored by Git. By default it does not pull Git,
-change branches, upload releases or flash either device.
+are locked. Generated `release/` files are ignored by Git. It runs `git pull --ff-only` before building. It does not change branches or flash
+either device; uploading requires `--release`.
 
 ## Build and publish a GitHub release automatically
 
@@ -184,3 +184,15 @@ Host tests for this flow (simulated compiler and GitHub CLI, no public release):
 python3 tests/position_button/test_build.py
 python3 tests/position_button/test_publish.py
 ```
+
+### Automatic source update
+
+Every invocation starts with `git pull --ff-only` on the currently checked-out
+branch and its configured upstream. If the pull fails (network/authentication,
+conflicting local changes, or divergent history), the script stops before
+building or deleting release files. It never merges, rebases, or discards changes.
+When a pull advances HEAD, the script restarts itself so updates to the build
+script take effect immediately, then reads the new version and commit.
+Use the `meshcoreStation` branch with its upstream set to `origin/meshcoreStation`.
+After initially pulling this script update, just run `./build-station.sh` or
+`./build-station.sh --release`; a separate manual pull is no longer needed.
