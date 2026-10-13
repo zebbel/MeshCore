@@ -4,6 +4,8 @@ import hashlib
 import json
 import pathlib
 import struct
+import re
+import zipfile
 import sys
 
 
@@ -45,5 +47,44 @@ def verify(folder):
         hashlib.sha256(data).hexdigest() + '  ' + uf2_name + '\n')
 
 
+def name_release(folder, version, commit):
+    """Use upstream target-version-SHA names, with the custom suffix last."""
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', version) or not re.fullmatch(r'[0-9a-f]+', commit):
+        raise ValueError('Invalid version or commit')
+    folder = pathlib.Path(folder)
+    heltec = 'heltec_v4_companion_radio_usb'
+    t1000 = 't1000e_companion_radio_ble_position'
+    hname = f'{heltec}-{version}-{commit}-meshcoreStation'
+    mname = f'{heltec}-{version}-{commit}-merged-meshcoreStation'
+    tname = f't1000e_companion_radio_ble-{version}-{commit}-meshcoreStation'
+    app = (folder / (heltec + '.bin')).read_bytes()
+    merged = (folder / (heltec + '-merged.bin')).read_bytes()
+    if not merged or merged[0] != 0xE9 or merged[0x10000:0x10000 + len(app)] != app:
+        raise ValueError('Merged Heltec image does not contain the verified application')
+    with zipfile.ZipFile(folder / (t1000 + '.zip')) as archive:
+        if archive.testzip() is not None or 'manifest.json' not in archive.namelist():
+            raise ValueError('Invalid Nordic DFU archive')
+        dfu = json.loads(archive.read('manifest.json'))['manifest']['application']
+        for key in ('bin_file', 'dat_file'):
+            if not archive.read(dfu[key]):
+                raise ValueError('Empty Nordic DFU payload')
+    manifest = json.loads((folder / (heltec + '.json')).read_text())
+    manifest['image'] = hname + '.bin'
+    (folder / (heltec + '.json')).write_text(json.dumps(manifest, indent=2) + '\n')
+    for source, dest in ((heltec + '.bin', hname + '.bin'),
+                         (heltec + '.json', hname + '.json'),
+                         (heltec + '-merged.bin', mname + '.bin'),
+                         (t1000 + '.uf2', tname + '.uf2'),
+                         (t1000 + '.zip', tname + '.zip')):
+        (folder / source).rename(folder / dest)
+    (folder / (t1000 + '.uf2.sha256')).unlink()
+    for ext in ('.uf2', '.zip'):
+        name = tname + ext
+        (folder / (name + '.sha256')).write_text(
+            hashlib.sha256((folder / name).read_bytes()).hexdigest() + '  ' + name + '\n')
+
+
 if __name__ == '__main__':
     verify(sys.argv[1])
+    if len(sys.argv) == 4:
+        name_release(*sys.argv[1:])

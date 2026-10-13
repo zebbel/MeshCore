@@ -1,7 +1,7 @@
 # Building firmware updates for meshcoreStation
 
 The `meshcoreStation` branch contains all custom companion firmware: Heltec V4
-OLED USB and T1000-E BLE position-button support, plus the shared build wrapper.
+OLED USB and T1000-E BLE position-button support, plus the shared root-level `build-station.sh`.
 
 Target: Heltec V4 OLED USB companion, physical flash 16 MB, existing partitions
 occupying the first 4 MB. This configuration matches the device dump verified
@@ -69,50 +69,67 @@ different device or a later changed layout. No erase or filesystem relocation
 is required. Actual firmware compilation and on-device validation must still
 succeed before treating a release as verified.
 
-## One-command build beside MeshCore
+## One-command build inside MeshCore
 
-Install the wrapper once (or repeat to update it), from the directory that
-contains your `MeshCore` checkout:
-
-```sh
-bash MeshCore/scripts/build-station.sh --install
-./build-station.sh
-```
-
-The script lives one folder above MeshCore and can be called from any working
-directory. It now clean-builds **both** custom firmware environments:
-
-| Device | Environment | Files copied beside the script |
-| --- | --- | --- |
-| Heltec V4 OLED USB | `heltec_v4_companion_radio_usb` | `.bin` + `.json` |
-| T1000-E BLE position button | `t1000e_companion_radio_ble_position` | `.uf2` + `.uf2.sha256` |
-
-The full filenames start with the corresponding environment name. Upload the
-Heltec pair together for meshcoreStation. The T1000-E UF2 and checksum can be
-attached to the same GitHub release, but installation uses the T1000-E UF2
-bootloader; the Heltec/esptool update flow cannot install it. See
-[T1000-E configuration and behavior](t1000-position-button.md).
-
-The wrapper finds `pio` on PATH or at `~/.platformio/penv/bin/pio`; alternatively
-set `STATION_PIO` to the full executable path. It packages and validates the
-Heltec application and manifest, converts the T1000-E HEX into UF2, checks the
-nRF52840 family ID and application address bounds, and creates a SHA-256 checksum.
-All four files are staged until both builds and validation succeed. Previous
-outputs are removed at build start so failure cannot leave stale release files.
-Builds sharing the output directory are locked; unrelated files are untouched.
-
-It does not pull Git, change branches, upload releases, or flash either device.
-Pull the desired branch first. **Repeat `--install` after pulling this update**
-to replace the older single-target wrapper:
+The build entry point is `MeshCore/build-station.sh`. No installation/copy step
+is needed. Run it from your checkout:
 
 ```sh
-cd MeshCore
 git fetch origin
 git switch meshcoreStation
 git pull --ff-only
-bash scripts/build-station.sh --install
-../build-station.sh
+bash build-station.sh
 ```
 
-The tracked wrapper remains in `scripts/build-station.sh`. The first dual build
-may download the Nordic toolchain in addition to the ESP32 tools.
+It creates `MeshCore/release/` and puts both custom firmware releases there. It
+also works when invoked by absolute path from another working directory.
+The previously installed script above MeshCore is obsolete; use this one now.
+
+Names follow upstream `build.sh`: `<target>-<version>-<short Git SHA>`, followed
+by `-meshcoreStation` before the extension. The T1000-E filename uses upstream's
+`t1000e_companion_radio_ble` name; the build environment remains
+`t1000e_companion_radio_ble_position` to enable our custom feature.
+
+For example (the actual SHA comes from your checkout):
+
+```text
+release/heltec_v4_companion_radio_usb-v1.17.1-abcdef12-meshcoreStation.bin
+release/heltec_v4_companion_radio_usb-v1.17.1-abcdef12-meshcoreStation.json
+release/heltec_v4_companion_radio_usb-v1.17.1-abcdef12-merged-meshcoreStation.bin
+release/t1000e_companion_radio_ble-v1.17.1-abcdef12-meshcoreStation.uf2
+release/t1000e_companion_radio_ble-v1.17.1-abcdef12-meshcoreStation.zip
+release/t1000e_companion_radio_ble-v1.17.1-abcdef12-meshcoreStation.uf2.sha256
+release/t1000e_companion_radio_ble-v1.17.1-abcdef12-meshcoreStation.zip.sha256
+```
+
+The Heltec application `.bin` and matching `.json` are the application-update
+pair for meshcoreStation. The manifest's `image` references the renamed file;
+its device `target`, partition hash and image hash remain unchanged. Downloaders
+must use these versioned asset names/the manifest's `image`, not the previous
+fixed filename. The separate `-merged-meshcoreStation.bin` is a full-flash image
+including bootloader and partition table, not an application-update image.
+
+The T1000-E outputs match upstream formats: UF2 for its compatible UF2 bootloader
+and ZIP for Nordic DFU. They are not esptool images. See
+[T1000-E configuration and behavior](t1000-position-button.md).
+
+By default the firmware version is read from the companion source. Set
+`FIRMWARE_VERSION` to override it, just as with upstream's build script:
+
+```sh
+FIRMWARE_VERSION=v1.17.1 bash build-station.sh
+```
+
+The version, Git SHA and meshcoreStation suffix are also embedded in the built
+firmware version string. Build date uses upstream's date format.
+
+The wrapper finds `pio` on PATH or at `~/.platformio/penv/bin/pio`; alternatively
+set `STATION_PIO` to its full executable path. It clean-builds both environments,
+validates the Heltec application/partitions and merged image, validates the UF2
+family/address bounds and DFU archive, updates names/manifests, and writes
+checksums. All files are staged until both builds and validation succeed.
+
+Previous files for the same version/SHA are removed when building starts; other
+versions and unrelated files are retained. Builds in the same release directory
+are locked. Generated `release/` files are ignored by Git. It does not pull Git,
+change branches, upload releases or flash either device.

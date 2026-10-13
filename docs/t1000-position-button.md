@@ -93,7 +93,8 @@ may not show these device-originated messages as sent items in its own history.
 
 ## Build and install
 
-The shared `build-station.sh` builds both the Heltec and this target; see
+The root-level `build-station.sh` builds both the Heltec and this target into
+`release/`, with upstream-style versioned filenames ending in `-meshcoreStation`; see
 [the build instructions](station-firmware-release.md). For only this firmware:
 
 ```sh

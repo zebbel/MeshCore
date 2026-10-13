@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# Build both custom companions into MeshCore/release: bash build-station.sh
+set -euo pipefail
+
+repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+if [[ ! -f "$repo_dir/platformio.ini" || ! -f "$repo_dir/scripts/station_release.py" ]]; then
+  printf 'Run the build-station.sh inside your MeshCore checkout.\n' >&2
+  exit 1
+fi
+if [[ $# != 0 ]]; then
+  printf 'Usage: bash %s\nNo installation step is needed.\n' "$0" >&2
+  exit 2
+fi
+output_dir="$repo_dir/release"
+mkdir -p -- "$output_dir"
+cd -- "$repo_dir"
+# Match upstream build.sh: environment name, firmware version and short Git SHA.
+version="${FIRMWARE_VERSION:-$(python3 - <<'VERSION'
+import pathlib, re
+source = pathlib.Path('examples/companion_radio/MyMesh.h').read_text()
+print(re.search(r'^#define FIRMWARE_VERSION "([^"\n]+)"', source, re.M)[1])
+VERSION
+)}"
+if [[ ! "$version" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  printf 'FIRMWARE_VERSION must be a filename-safe version string.\n' >&2
+  exit 2
+fi
+commit_hash="$(git rev-parse --short HEAD)"
+suffix="$version-$commit_hash-meshcoreStation"
+build_date="$(date '+%d-%b-%Y')"
+export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS:-} -DFIRMWARE_BUILD_DATE='\"${build_date}\"' -DFIRMWARE_VERSION='\"${suffix}\"'"
+
+if [[ -n "${STATION_PIO:-}" ]]; then
+  pio_cmd="$STATION_PIO"
+elif command -v pio >/dev/null 2>&1; then
+  pio_cmd="$(command -v pio)"
+elif [[ -x "$HOME/.platformio/penv/bin/pio" ]]; then
+  pio_cmd="$HOME/.platformio/penv/bin/pio"
+else
+  printf 'PlatformIO not found. Use the VS Code PlatformIO terminal or set STATION_PIO to its executable.\n' >&2
+  exit 1
+fi
+command -v python3 >/dev/null
+command -v flock >/dev/null
+# Lock the output directory without leaving a lock file beside the release.
+exec 9<"$output_dir"
+flock -n 9 || { printf 'Another Station build is running here.\n' >&2; exit 1; }
+
+heltec=heltec_v4_companion_radio_usb
+t1000=t1000e_companion_radio_ble_position
+heltec_name="$heltec-$suffix"
+merged_name="$heltec-$version-$commit_hash-merged-meshcoreStation"
+t1000_name="t1000e_companion_radio_ble-$suffix"
+outputs=("$heltec_name.bin" "$heltec_name.json" "$merged_name.bin"
+         "$t1000_name.uf2" "$t1000_name.zip" "$t1000_name.uf2.sha256" "$t1000_name.zip.sha256")
+# Remove only this version's managed outputs; retain older versions.
+for file in "${outputs[@]}"; do rm -f -- "$output_dir/$file"; done
+staging="$(mktemp -d "$output_dir/.station-build.XXXXXX")"
+trap 'rm -rf -- "$staging"' EXIT
+cd -- "$repo_dir"
+
+printf 'Building Heltec V4 OLED USB companion\n'
+"$pio_cmd" run -e "$heltec" -t clean
+"$pio_cmd" run -e "$heltec"
+# Use a relative path: upstream's merge command does not quote its output path.
+export MERGED_BIN_PATH=".pio/build/$heltec/firmware-merged.bin"
+"$pio_cmd" run -e "$heltec" -t mergebin
+cp -- "$repo_dir/.pio/build/$heltec/firmware-merged.bin" "$staging/$heltec-merged.bin"
+python3 "$repo_dir/scripts/station_release.py" "$repo_dir/.pio/build/$heltec"
+cp -- "$repo_dir/.pio/build/$heltec/release/$heltec.bin" "$staging/$heltec.bin"
+cp -- "$repo_dir/.pio/build/$heltec/release/$heltec.json" "$staging/$heltec.json"
+
+printf 'Building T1000-E BLE position companion\n'
+"$pio_cmd" run -e "$t1000" -t clean
+# Explicit conversion below avoids an inherited UF2_FILE_PATH redirect and
+# ensures converter failures propagate to this script.
+"$pio_cmd" run -e "$t1000"
+python3 "$repo_dir/bin/uf2conv/uf2conv.py" -f 0xADA52840 -c \
+  "$repo_dir/.pio/build/$t1000/firmware.hex" -o "$staging/$t1000.uf2"
+cp -- "$repo_dir/.pio/build/$t1000/firmware.zip" "$staging/$t1000.zip"
+python3 "$repo_dir/scripts/verify-station-build.py" "$staging" "$version" "$commit_hash"
+
+for file in "${outputs[@]}"; do mv -- "$staging/$file" "$output_dir/$file"; done
+printf '\nBoth builds complete. Release files:\n'
+for file in "${outputs[@]}"; do printf '%s\n' "$output_dir/$file"; done
+printf '\nHeltec: .bin + .json for meshcoreStation. T1000-E: .uf2 or DFU .zip. Merged Heltec image is for full flashing.\n'
