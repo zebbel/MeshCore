@@ -972,6 +972,9 @@ void MyMesh::begin(bool has_display) {
   bootstrapRTCfromContacts();
   addChannel("Public", PUBLIC_GROUP_PSK); // pre-configure Andy's public channel
   _store->loadChannels(this);
+#ifdef ENABLE_POSITION_BUTTON
+  loadPositionSettings();
+#endif
 
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
   radio_driver.setTxPower(_prefs.tx_power_dbm);
@@ -1811,25 +1814,35 @@ void MyMesh::handleCmdFrame(size_t len) {
     }
   } else if (cmd_frame[0] == CMD_GET_CUSTOM_VARS) {
     out_frame[0] = RESP_CODE_CUSTOM_VARS;
-    char *dp = (char *)&out_frame[1];
-    for (int i = 0; i < sensors.getNumSettings() && dp - (char *)&out_frame[1] < 140; i++) {
-      if (i > 0) {
-        *dp++ = ',';
-      }
-      strcpy(dp, sensors.getSettingName(i));
-      dp = strchr(dp, 0);
-      *dp++ = ':';
-      strcpy(dp, sensors.getSettingValue(i));
-      dp = strchr(dp, 0);
+    size_t used = 1;
+    auto appendVar = [&](const char* name, const char* value) {
+      size_t needed = strlen(name) + strlen(value) + 1 + (used > 1 ? 1 : 0);
+      if (used + needed >= sizeof(out_frame)) return;
+      if (used > 1) out_frame[used++] = ',';
+      used += snprintf((char*)out_frame + used, sizeof(out_frame) - used,
+                       "%s:%s", name, value);
+    };
+#ifdef ENABLE_POSITION_BUTTON
+    appendVar("position_channel", _position.config.name);
+    appendVar("position_button", _position.config.enabled ? "1" : "0");
+    appendVar("position_status", _position.status);
+#endif
+    for (int i = 0; i < sensors.getNumSettings(); i++) {
+      appendVar(sensors.getSettingName(i), sensors.getSettingValue(i));
     }
-    _serial->writeFrame(out_frame, dp - (char *)out_frame);
+    _serial->writeFrame(out_frame, used);
   } else if (cmd_frame[0] == CMD_SET_CUSTOM_VAR && len >= 4) {
     cmd_frame[len] = 0;
     char *sp = (char *)&cmd_frame[1];
     char *np = strchr(sp, ':'); // look for separator char
     if (np) {
       *np++ = 0; // modify 'cmd_frame', replace ':' with null
+#ifdef ENABLE_POSITION_BUTTON
+      bool success = strncmp(sp, "position_", 9) == 0
+          ? setPositionSetting(sp, np) : sensors.setSettingValue(sp, np);
+#else
       bool success = sensors.setSettingValue(sp, np);
+#endif
       if (success) {
         #if ENV_INCLUDE_GPS == 1
         // Update node preferences for GPS settings
@@ -2236,6 +2249,9 @@ void MyMesh::checkSerialInterface() {
 
 void MyMesh::loop() {
   BaseChatMesh::loop();
+#ifdef ENABLE_POSITION_BUTTON
+  loopButtonPosition();
+#endif
 
   if (_cli_rescue) {
     checkCLIRescueCmd();

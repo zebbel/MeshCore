@@ -45,34 +45,32 @@ command -v flock >/dev/null
 exec 9<"$output_dir"
 flock -n 9 || { printf 'Another Station build is running here.\n' >&2; exit 1; }
 
-target=heltec_v4_companion_radio_usb
-build_dir="$repo_dir/.pio/build/$target"
-# These two filenames belong to this build; remove old copies before starting.
-rm -f -- "$output_dir/$target.bin" "$output_dir/$target.json"
-cd -- "$repo_dir"
-printf 'Building %s in %s\n' "$target" "$repo_dir"
-"$pio_cmd" run -e "$target" -t clean
-"$pio_cmd" run -e "$target"
-# Also run explicitly: ensures packaging happens even with incremental builds.
-python3 "$repo_dir/scripts/station_release.py" "$build_dir"
-
-# Stage and validate both outputs before publishing them beside this script.
+heltec=heltec_v4_companion_radio_usb
+t1000=t1000e_companion_radio_ble_position
+# Remove previous deliverables so a failed build cannot look like a new release.
+outputs=("$heltec.bin" "$heltec.json" "$t1000.uf2" "$t1000.uf2.sha256")
+for file in "${outputs[@]}"; do rm -f -- "$output_dir/$file"; done
 staging="$(mktemp -d "$output_dir/.station-build.XXXXXX")"
 trap 'rm -rf -- "$staging"' EXIT
-cp -- "$build_dir/release/$target.bin" "$staging/$target.bin"
-cp -- "$build_dir/release/$target.json" "$staging/$target.json"
-python3 - "$staging" "$target" <<'PY'
-import hashlib, json, pathlib, sys
-folder, target = pathlib.Path(sys.argv[1]), sys.argv[2]
-manifest = json.loads((folder / (target + '.json')).read_text())
-image = (folder / (target + '.bin')).read_bytes()
-if (manifest.get('schema') != 1 or manifest.get('target') != target
-        or manifest.get('image') != target + '.bin'
-        or manifest.get('chip') != 'esp32s3'
-        or manifest.get('sha256') != hashlib.sha256(image).hexdigest()):
-    raise SystemExit('Release verification failed; nothing copied.')
-PY
-mv -- "$staging/$target.bin" "$output_dir/$target.bin"
-mv -- "$staging/$target.json" "$output_dir/$target.json"
-printf '\nBuild complete. Upload BOTH files to the same GitHub release:\n%s\n%s\n' \
-  "$output_dir/$target.bin" "$output_dir/$target.json"
+cd -- "$repo_dir"
+
+printf 'Building Heltec V4 OLED USB companion\n'
+"$pio_cmd" run -e "$heltec" -t clean
+"$pio_cmd" run -e "$heltec"
+python3 "$repo_dir/scripts/station_release.py" "$repo_dir/.pio/build/$heltec"
+cp -- "$repo_dir/.pio/build/$heltec/release/$heltec.bin" "$staging/$heltec.bin"
+cp -- "$repo_dir/.pio/build/$heltec/release/$heltec.json" "$staging/$heltec.json"
+
+printf 'Building T1000-E BLE position companion\n'
+"$pio_cmd" run -e "$t1000" -t clean
+# Explicit conversion below avoids an inherited UF2_FILE_PATH redirect and
+# ensures converter failures propagate to this script.
+"$pio_cmd" run -e "$t1000"
+python3 "$repo_dir/bin/uf2conv/uf2conv.py" -f 0xADA52840 -c \
+  "$repo_dir/.pio/build/$t1000/firmware.hex" -o "$staging/$t1000.uf2"
+python3 "$repo_dir/scripts/verify-station-build.py" "$staging"
+
+for file in "${outputs[@]}"; do mv -- "$staging/$file" "$output_dir/$file"; done
+printf '\nBoth builds complete. Release files:\n'
+for file in "${outputs[@]}"; do printf '%s\n' "$output_dir/$file"; done
+printf '\nHeltec: .bin + .json for meshcoreStation. T1000-E: .uf2 for its UF2 bootloader.\n'

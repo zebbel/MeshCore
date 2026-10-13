@@ -493,6 +493,9 @@ void UITask::handleButtonAnyPress() {
 
 void UITask::handleButtonShortPress() {
   MESH_DEBUG_PRINTLN("UITask: short press triggered");
+#ifdef ENABLE_POSITION_BUTTON
+  the_mesh.requestButtonPosition();
+#endif
   if (_display != NULL) {
     // Only clear message preview if display was already on before button press
     if (_displayWasOn) {

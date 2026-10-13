@@ -25,6 +25,9 @@
 
 #include "DataStore.h"
 #include "NodePrefs.h"
+#ifdef ENABLE_POSITION_BUTTON
+#include "PositionButton.h"
+#endif
 
 #include <RTClib.h>
 #include <helpers/ArduinoHelpers.h>
@@ -98,6 +101,9 @@ public:
   void loop();
   void handleCmdFrame(size_t len);
   bool advert();
+#ifdef ENABLE_POSITION_BUTTON
+  void requestButtonPosition();
+#endif
   void enterCLIRescue();
 
   int  getRecentlyHeard(AdvertPath dest[], int max_num);
@@ -208,6 +214,16 @@ private:
   void saveChannels() { _store->saveChannels(this); }
   void saveContacts();
 
+#ifdef ENABLE_POSITION_BUTTON
+  PositionButtonState _position;
+  void loadPositionSettings();
+  bool savePositionSettings(const PositionButtonConfig& config);
+  bool setPositionSetting(const char* name, const char* value);
+  bool findPositionChannel(ChannelDetails& channel);
+  bool privatePositionChannel(const ChannelDetails& channel);
+  void loopButtonPosition();
+  void finishButtonPosition(const char* status);
+#endif
   DataStore* _store;
   NodePrefs _prefs;
   uint32_t pending_login;

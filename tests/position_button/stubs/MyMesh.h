@@ -1,0 +1,87 @@
+#pragma once
+#include "PositionButton.h"
+#include <map>
+#include <string>
+#include <vector>
+#include <algorithm>
+#include <memory>
+#define MAX_GROUP_CHANNELS 40
+#define FILE_O_WRITE 1
+extern uint32_t now;
+inline uint32_t millis() { return now; }
+struct ChannelDetails { char name[32] = {}; struct { uint8_t secret[32] = {}; } channel; };
+namespace mesh { struct Utils {
+  // A deterministic test checksum; production uses MeshCore SHA-256.
+  static void sha256(uint8_t* dest, size_t n, const uint8_t* data, int size) {
+    memset(dest, 0, n);
+    for (int i = 0; i < size; ++i) dest[i % n] = uint8_t(dest[i % n] * 33 + data[i]);
+  }
+}; }
+struct FakeFile {
+  std::shared_ptr<std::vector<uint8_t>> bytes;
+  size_t pos = 0;
+  explicit operator bool() const { return bool(bytes); }
+  size_t size() const { return bytes ? bytes->size() : 0; }
+  size_t read(uint8_t* data, size_t n) {
+    n = std::min(n, size() - pos); memcpy(data, bytes->data() + pos, n); pos += n; return n;
+  }
+  size_t write(const uint8_t* data, size_t n) { bytes->insert(bytes->end(), data, data+n); return n; }
+  void close() {}
+};
+struct FakeFS {
+  bool fail = false;
+  std::map<std::string, std::shared_ptr<std::vector<uint8_t>>> files;
+  void remove(const char* name) { files.erase(name); }
+  FakeFile open(const char* name, int mode = 0) {
+    FakeFile f;
+    if (mode) { if (fail) return f; files[name] = std::make_shared<std::vector<uint8_t>>(); }
+    if (files.count(name)) f.bytes = files[name];
+    return f;
+  }
+  bool rename(const char* a, const char* b) { if (fail) return false; files[b] = files.at(a); files.erase(a); return true; }
+};
+struct DataStore {
+  FakeFS fs;
+  FakeFS* getPrimaryFS() { return &fs; }
+  FakeFile openRead(const char* name) { return fs.open(name); }
+};
+struct FakeGPS {
+  bool valid = false; uint32_t timestamp = 1800000000; int32_t lat = 52123456, lon = 13123456;
+  bool isValid() { return valid; }
+  long getTimestamp() { return timestamp; }
+  long getLatitude() { return lat; }
+  long getLongitude() { return lon; }
+};
+struct FakeSensors {
+  bool enabled = false; FakeGPS gps;
+  FakeGPS* getLocationProvider() { return &gps; }
+  const char* getSettingValue(int) { return enabled ? "1" : "0"; }
+  bool setSettingValue(const char*, const char* value) { enabled = value[0] == '1'; return true; }
+};
+extern FakeSensors sensors;
+enum class UIEventType { ack };
+struct FakeUI { int acks = 0; void notify(UIEventType) { ++acks; } };
+class MyMesh {
+public:
+  PositionButtonState _position;
+  DataStore* _store;
+  FakeUI* _ui = nullptr;
+  bool _cli_rescue = false, sendOK = true;
+  struct { char node_name[32] = "test"; } _prefs;
+  ChannelDetails channels[40];
+  int sent = 0; std::string lastText; uint8_t lastKey = 0;
+  explicit MyMesh(DataStore& store): _store(&store) {}
+  bool getChannel(int i, ChannelDetails& ch) { ch = channels[i]; return true; }
+  template<class C> bool sendGroupMessage(uint32_t, const C& ch, const char*, const char* text, size_t) {
+    if (!sendOK) return false;
+    ++sent; lastText = text; lastKey = ch.secret[0]; return true;
+  }
+  bool privatePositionChannel(const ChannelDetails&);
+  bool findPositionChannel(ChannelDetails&);
+  void loadPositionSettings();
+  bool savePositionSettings(const PositionButtonConfig&);
+  bool setPositionSetting(const char*, const char*);
+  void finishButtonPosition(const char*);
+  void requestButtonPosition();
+  void loopButtonPosition();
+};

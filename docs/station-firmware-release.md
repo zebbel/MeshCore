@@ -75,17 +75,39 @@ bash MeshCore/scripts/build-station.sh --install
 ./build-station.sh
 ```
 
-The script lives one folder above MeshCore. It can be called from any working
-directory and puts `heltec_v4_companion_radio_usb.bin` and
-`heltec_v4_companion_radio_usb.json` beside itself. It finds `pio` on PATH or at
-`~/.platformio/penv/bin/pio`; alternatively set `STATION_PIO` to the full path of
-the executable. It does a clean build, invokes the manifest packager, verifies
-the copied image hash, and prints the two release paths. It does not pull Git,
-change branches, upload a release, or flash the companion. Pull the desired
-source branch before running it.
+The script lives one folder above MeshCore and can be called from any working
+directory. It now clean-builds **both** custom firmware environments:
 
-The two previous output files are removed when a build starts so a failed build
-cannot be mistaken for a new release. Builds sharing the output directory are
-locked. Other files beside the script are left untouched. The wrapper's tracked
-source stays in `scripts/build-station.sh`; repeat `--install` after pulling a
-future change to the wrapper.
+| Device | Environment | Files copied beside the script |
+| --- | --- | --- |
+| Heltec V4 OLED USB | `heltec_v4_companion_radio_usb` | `.bin` + `.json` |
+| T1000-E BLE position button | `t1000e_companion_radio_ble_position` | `.uf2` + `.uf2.sha256` |
+
+The full filenames start with the corresponding environment name. Upload the
+Heltec pair together for meshcoreStation. The T1000-E UF2 and checksum can be
+attached to the same GitHub release, but installation uses the T1000-E UF2
+bootloader; the Heltec/esptool update flow cannot install it. See
+[T1000-E configuration and behavior](t1000-position-button.md).
+
+The wrapper finds `pio` on PATH or at `~/.platformio/penv/bin/pio`; alternatively
+set `STATION_PIO` to the full executable path. It packages and validates the
+Heltec application and manifest, converts the T1000-E HEX into UF2, checks the
+nRF52840 family ID and application address bounds, and creates a SHA-256 checksum.
+All four files are staged until both builds and validation succeed. Previous
+outputs are removed at build start so failure cannot leave stale release files.
+Builds sharing the output directory are locked; unrelated files are untouched.
+
+It does not pull Git, change branches, upload releases, or flash either device.
+Pull the desired branch first. **Repeat `--install` after pulling this update**
+to replace the older single-target wrapper:
+
+```sh
+cd MeshCore
+git switch feature/usb-oled-control
+git pull --ff-only
+bash scripts/build-station.sh --install
+../build-station.sh
+```
+
+The tracked wrapper remains in `scripts/build-station.sh`. The first dual build
+may download the Nordic toolchain in addition to the ESP32 tools.
