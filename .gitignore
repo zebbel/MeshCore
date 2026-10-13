@@ -19,3 +19,5 @@ venv/
 platformio.local.ini
 
 /release/
+
+__pycache__/

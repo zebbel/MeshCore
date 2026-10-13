@@ -7,8 +7,13 @@ if [[ ! -f "$repo_dir/platformio.ini" || ! -f "$repo_dir/scripts/station_release
   printf 'Run the build-station.sh inside your MeshCore checkout.\n' >&2
   exit 1
 fi
+publish_release=false
+if [[ $# == 1 && "$1" == '--release' ]]; then
+  publish_release=true
+  shift
+fi
 if [[ $# != 0 ]]; then
-  printf 'Usage: bash %s\nNo installation step is needed.\n' "$0" >&2
+  printf 'Usage: bash %s [--release]\nBuild only by default; --release also publishes to GitHub.\n' "$0" >&2
   exit 2
 fi
 output_dir="$repo_dir/release"
@@ -25,10 +30,29 @@ if [[ ! "$version" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
   printf 'FIRMWARE_VERSION must be a filename-safe version string.\n' >&2
   exit 2
 fi
+station_version="$(cat "$repo_dir/meshcoreStation.version")"
+if [[ ! "$station_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  printf 'meshcoreStation.version must contain a version such as v1.0.0.\n' >&2
+  exit 2
+fi
+commit_sha="$(git rev-parse HEAD)"
 commit_hash="$(git rev-parse --short HEAD)"
-suffix="$version-$commit_hash-meshcoreStation"
+if $publish_release; then
+  if [[ -n "${PLATFORMIO_BUILD_FLAGS:-}" || -f "$repo_dir/platformio.local.ini" ]]; then
+    printf 'Release builds require no extra PLATFORMIO_BUILD_FLAGS or platformio.local.ini overrides.\n' >&2
+    exit 1
+  fi
+  python3 "$repo_dir/scripts/publish-station-release.py" --check "$commit_sha" "$station_version"
+fi
+suffix="$version-$commit_hash-meshcoreStation-$station_version"
+# Companion DEVICE_INFO has only 20 bytes for its version, including NUL.
+reported_version="$version-MS${station_version#v}"
+if [[ ${#reported_version} -gt 19 ]]; then
+  printf 'Combined firmware version exceeds the companion protocol limit.\n' >&2
+  exit 2
+fi
 build_date="$(date '+%d-%b-%Y')"
-export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS:-} -DFIRMWARE_BUILD_DATE='\"${build_date}\"' -DFIRMWARE_VERSION='\"${suffix}\"'"
+export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS:-} -DFIRMWARE_BUILD_DATE='\"${build_date}\"' -DFIRMWARE_VERSION='\"${reported_version}\"'"
 
 if [[ -n "${STATION_PIO:-}" ]]; then
   pio_cmd="$STATION_PIO"
@@ -49,7 +73,7 @@ flock -n 9 || { printf 'Another Station build is running here.\n' >&2; exit 1; }
 heltec=heltec_v4_companion_radio_usb
 t1000=t1000e_companion_radio_ble_position
 heltec_name="$heltec-$suffix"
-merged_name="$heltec-$version-$commit_hash-merged-meshcoreStation"
+merged_name="$heltec-$version-$commit_hash-merged-meshcoreStation-$station_version"
 t1000_name="t1000e_companion_radio_ble-$suffix"
 outputs=("$heltec_name.bin" "$heltec_name.json" "$merged_name.bin"
          "$t1000_name.uf2" "$t1000_name.zip" "$t1000_name.uf2.sha256" "$t1000_name.zip.sha256")
@@ -78,9 +102,15 @@ printf 'Building T1000-E BLE position companion\n'
 python3 "$repo_dir/bin/uf2conv/uf2conv.py" -f 0xADA52840 -c \
   "$repo_dir/.pio/build/$t1000/firmware.hex" -o "$staging/$t1000.uf2"
 cp -- "$repo_dir/.pio/build/$t1000/firmware.zip" "$staging/$t1000.zip"
-python3 "$repo_dir/scripts/verify-station-build.py" "$staging" "$version" "$commit_hash"
+python3 "$repo_dir/scripts/verify-station-build.py" "$staging" "$version" "$commit_hash" "$station_version"
 
 for file in "${outputs[@]}"; do mv -- "$staging/$file" "$output_dir/$file"; done
 printf '\nBoth builds complete. Release files:\n'
 for file in "${outputs[@]}"; do printf '%s\n' "$output_dir/$file"; done
 printf '\nHeltec: .bin + .json for meshcoreStation. T1000-E: .uf2 or DFU .zip. Merged Heltec image is for full flashing.\n'
+
+if $publish_release; then
+  assets=()
+  for file in "${outputs[@]}"; do assets+=("$output_dir/$file"); done
+  python3 "$repo_dir/scripts/publish-station-release.py" "$commit_sha" "$station_version" "${assets[@]}"
+fi

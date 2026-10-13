@@ -47,16 +47,18 @@ def verify(folder):
         hashlib.sha256(data).hexdigest() + '  ' + uf2_name + '\n')
 
 
-def name_release(folder, version, commit):
+def name_release(folder, version, commit, station_version):
     """Use upstream target-version-SHA names, with the custom suffix last."""
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]*', version) or not re.fullmatch(r'[0-9a-f]+', commit):
         raise ValueError('Invalid version or commit')
     folder = pathlib.Path(folder)
     heltec = 'heltec_v4_companion_radio_usb'
     t1000 = 't1000e_companion_radio_ble_position'
-    hname = f'{heltec}-{version}-{commit}-meshcoreStation'
-    mname = f'{heltec}-{version}-{commit}-merged-meshcoreStation'
-    tname = f't1000e_companion_radio_ble-{version}-{commit}-meshcoreStation'
+    if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', station_version):
+        raise ValueError('Invalid meshcoreStation version')
+    hname = f'{heltec}-{version}-{commit}-meshcoreStation-{station_version}'
+    mname = f'{heltec}-{version}-{commit}-merged-meshcoreStation-{station_version}'
+    tname = f't1000e_companion_radio_ble-{version}-{commit}-meshcoreStation-{station_version}'
     app = (folder / (heltec + '.bin')).read_bytes()
     merged = (folder / (heltec + '-merged.bin')).read_bytes()
     if not merged or merged[0] != 0xE9 or merged[0x10000:0x10000 + len(app)] != app:
@@ -70,6 +72,9 @@ def name_release(folder, version, commit):
                 raise ValueError('Empty Nordic DFU payload')
     manifest = json.loads((folder / (heltec + '.json')).read_text())
     manifest['image'] = hname + '.bin'
+    manifest['meshcoreStation_version'] = station_version
+    manifest['meshcore_version'] = version
+    manifest['commit'] = commit
     (folder / (heltec + '.json')).write_text(json.dumps(manifest, indent=2) + '\n')
     for source, dest in ((heltec + '.bin', hname + '.bin'),
                          (heltec + '.json', hname + '.json'),
@@ -86,5 +91,5 @@ def name_release(folder, version, commit):
 
 if __name__ == '__main__':
     verify(sys.argv[1])
-    if len(sys.argv) == 4:
+    if len(sys.argv) == 5:
         name_release(*sys.argv[1:])

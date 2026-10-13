@@ -15,6 +15,7 @@ with tempfile.TemporaryDirectory(prefix='dual build ') as directory:
     (repo / 'scripts').mkdir(parents=True)
     (repo / 'platformio.ini').write_text('')
     shutil.copy(ROOT / 'build-station.sh', repo / 'build-station.sh')
+    shutil.copy(ROOT / 'meshcoreStation.version', repo / 'meshcoreStation.version')
     (repo / 'examples/companion_radio').mkdir(parents=True)
     shutil.copy(ROOT / 'examples/companion_radio/MyMesh.h', repo / 'examples/companion_radio/MyMesh.h')
     subprocess.run(['git', 'init', '-q', str(repo)], check=True)
@@ -61,9 +62,9 @@ else:
     env = dict(os.environ, STATION_PIO=str(compiler), FIRMWARE_VERSION='v1.17.1')
     subprocess.run(['bash', str(repo / 'build-station.sh')], check=True, env=env)
     release = repo / 'release'
-    hname = f'heltec_v4_companion_radio_usb-v1.17.1-{commit}-meshcoreStation'
-    mname = f'heltec_v4_companion_radio_usb-v1.17.1-{commit}-merged-meshcoreStation'
-    tname = f't1000e_companion_radio_ble-v1.17.1-{commit}-meshcoreStation'
+    hname = f'heltec_v4_companion_radio_usb-v1.17.1-{commit}-meshcoreStation-v1.0.0'
+    mname = f'heltec_v4_companion_radio_usb-v1.17.1-{commit}-merged-meshcoreStation-v1.0.0'
+    tname = f't1000e_companion_radio_ble-v1.17.1-{commit}-meshcoreStation-v1.0.0'
     outputs = [hname + '.bin', hname + '.json', mname + '.bin', tname + '.uf2',
                tname + '.zip', tname + '.uf2.sha256', tname + '.zip.sha256']
     assert sorted(p.name for p in release.iterdir()) == sorted(outputs)
