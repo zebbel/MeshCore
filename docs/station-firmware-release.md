@@ -1,5 +1,8 @@
 # Building firmware updates for meshcoreStation
 
+The `meshcoreStation` branch contains all custom companion firmware: Heltec V4
+OLED USB and T1000-E BLE position-button support, plus the shared build wrapper.
+
 Target: Heltec V4 OLED USB companion, physical flash 16 MB, existing partitions
 occupying the first 4 MB. This configuration matches the device dump verified
 on 2026-10-09. It does not migrate or enlarge partitions.
@@ -21,7 +24,8 @@ Other Heltec build targets keep their existing partition settings.
 ## Build on Debian in the PlatformIO terminal
 
 ```sh
-git switch feature/usb-oled-control
+git fetch origin
+git switch meshcoreStation
 git pull --ff-only
 pio run -e heltec_v4_companion_radio_usb -t clean
 pio run -e heltec_v4_companion_radio_usb
@@ -103,7 +107,8 @@ to replace the older single-target wrapper:
 
 ```sh
 cd MeshCore
-git switch feature/usb-oled-control
+git fetch origin
+git switch meshcoreStation
 git pull --ff-only
 bash scripts/build-station.sh --install
 ../build-station.sh
