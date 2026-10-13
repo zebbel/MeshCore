@@ -71,7 +71,7 @@ public:
   ChannelDetails channels[40];
   int sent = 0; std::string lastText; uint8_t lastKey = 0;
   explicit MyMesh(DataStore& store): _store(&store) {}
-  bool getChannel(int i, ChannelDetails& ch) { ch = channels[i]; return true; }
+  bool getChannel(int i, ChannelDetails& ch) { if (i < 0 || i >= 40) return false; ch = channels[i]; return true; }
   template<class C> bool sendGroupMessage(uint32_t, const C& ch, const char*, const char* text, size_t) {
     if (!sendOK) return false;
     ++sent; lastText = text; lastKey = ch.secret[0]; return true;
@@ -83,5 +83,6 @@ public:
   bool setPositionSetting(const char*, const char*);
   void finishButtonPosition(const char*);
   void requestButtonPosition();
+  int handlePositionButtonCommand(uint8_t, const char*, size_t);
   void loopButtonPosition();
 };

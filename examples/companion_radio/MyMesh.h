@@ -103,6 +103,7 @@ public:
   bool advert();
 #ifdef ENABLE_POSITION_BUTTON
   void requestButtonPosition();
+  int handlePositionButtonCommand(uint8_t channel_idx, const char* text, size_t len);
 #endif
   void enterCLIRescue();
 

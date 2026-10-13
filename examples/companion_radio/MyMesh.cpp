@@ -1140,6 +1140,10 @@ void MyMesh::handleCmdFrame(size_t len) {
                         : ERR_CODE_UNSUPPORTED_CMD); // unknown recipient, or unsupported TXT_TYPE_*
     }
   } else if (cmd_frame[0] == CMD_SEND_CHANNEL_TXT_MSG) { // send GroupChannel text msg
+    if (len < 7) {
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+      return;
+    }
     int i = 1;
     uint8_t txt_type = cmd_frame[i++]; // should be TXT_TYPE_PLAIN
     uint8_t channel_idx = cmd_frame[i++];
@@ -1148,6 +1152,18 @@ void MyMesh::handleCmdFrame(size_t len) {
     i += 4;
     const char *text = (char *)&cmd_frame[i];
 
+#ifdef ENABLE_POSITION_BUTTON
+    // Only intercept commands from the locally connected app, never received
+    // radio messages. Consume the entire command namespace, including errors.
+    if (txt_type == TXT_TYPE_PLAIN) {
+      int result = handlePositionButtonCommand(channel_idx, text, len - i);
+      if (result != 0) {
+        if (result > 0) writeOKFrame();
+        else writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+        return; // never fall through to sendGroupMessage
+      }
+    }
+#endif
     if (txt_type != TXT_TYPE_PLAIN) {
       writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
     } else {

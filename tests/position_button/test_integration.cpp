@@ -59,4 +59,47 @@ int main() {
   // Damaged saved records must not enable sending on reboot.
   (*store.fs.files["/position_button"])[4] ^= 1;
   MyMesh corrupt(store); corrupt.loadPositionSettings(); assert(!corrupt._position.config.enabled);
+  DataStore phoneStore;
+  MyMesh phone(phoneStore);
+  phone.channels[1] = m.channels[1];
+  strcpy(phone.channels[1].name, "Family");
+  phone.channels[2] = phone.channels[1];
+  phone.channels[2].channel.secret[0] = 91; // same name, different destination
+  auto command = [&](uint8_t slot, const char* text) {
+    return phone.handlePositionButtonCommand(slot, text, strlen(text));
+  };
+  assert(command(2, "/position-button on") == 1);
+  assert(phone._position.config.enabled);
+  ChannelDetails chosen;
+  assert(phone.findPositionChannel(chosen) && chosen.channel.secret[0] == 91);
+  MyMesh saved(phoneStore); saved.loadPositionSettings();
+  assert(saved._position.config.enabled);
+  assert(memcmp(saved._position.config.fingerprint, phone._position.config.fingerprint, 32) == 0);
+  assert(command(2, "ordinary message") == 0);
+  assert(command(2, "/position-button nonsense") == -1);
+  assert(command(2, "/position-button") == -1);
+  assert(command(2, "/position-button on extra") == -1);
+  assert(command(2, "/position-button-typo on") == -1);
+  assert(command(255, "/position-button on") == -1);
+  assert(command(0, "/position-button on") == -1); // empty channel
+  memcpy(phone.channels[3].channel.secret, pub, 32);
+  strcpy(phone.channels[3].name, "Public renamed");
+  assert(command(3, "/position-button on") == -1);
+  assert(command(1, "/position-button on") == 1);
+  auto before = phone._position.config;
+  phoneStore.fs.fail = true;
+  assert(command(2, "/position-button on") == -1);
+  assert(memcmp(&before, &phone._position.config, sizeof(before)) == 0);
+  assert(command(2, "/position-button off") == -1);
+  assert(phone._position.config.enabled);
+  phoneStore.fs.fail = false;
+  phone.requestButtonPosition(); assert(phone._position.pending);
+  assert(command(0, "  /position-button off \r\n") == 1);
+  assert(!phone._position.config.enabled && !phone._position.pending);
+  assert(phone.sent == 0); // configuring never queues a radio message
+  // Bounded frame text: it need not be NUL terminated.
+  const char bounded[] = {'/', 'p', 'o', 's', 'i', 't', 'i', 'o', 'n', '-', 'b', 'u', 't', 't', 'o', 'n', ' ', 'o', 'n', 'X'};
+  assert(phone.handlePositionButtonCommand(2, bounded, sizeof(bounded) - 1) == 1);
+  assert(phone.handlePositionButtonCommand(2, bounded, sizeof(bounded)) == -1);
+
 }

@@ -93,20 +93,20 @@ by `-meshcoreStation-<custom version>` before the extension. The T1000-E filenam
 For example (the actual SHA comes from your checkout):
 
 ```text
-release/heltec_v4_companion_radio_usb-v1.17.1-abcdef12-meshcoreStation-v1.0.0.bin
-release/heltec_v4_companion_radio_usb-v1.17.1-abcdef12-meshcoreStation-v1.0.0.json
-release/heltec_v4_companion_radio_usb-v1.17.1-abcdef12-merged-meshcoreStation-v1.0.0.bin
-release/t1000e_companion_radio_ble-v1.17.1-abcdef12-meshcoreStation-v1.0.0.uf2
-release/t1000e_companion_radio_ble-v1.17.1-abcdef12-meshcoreStation-v1.0.0.zip
-release/t1000e_companion_radio_ble-v1.17.1-abcdef12-meshcoreStation-v1.0.0.uf2.sha256
-release/t1000e_companion_radio_ble-v1.17.1-abcdef12-meshcoreStation-v1.0.0.zip.sha256
+release/heltec_v4_companion_radio_usb-v1.17.1-abcdef12-meshcoreStation-v1.0.1.bin
+release/heltec_v4_companion_radio_usb-v1.17.1-abcdef12-meshcoreStation-v1.0.1.json
+release/heltec_v4_companion_radio_usb-v1.17.1-abcdef12-merged-meshcoreStation-v1.0.1.bin
+release/t1000e_companion_radio_ble-v1.17.1-abcdef12-meshcoreStation-v1.0.1.uf2
+release/t1000e_companion_radio_ble-v1.17.1-abcdef12-meshcoreStation-v1.0.1.zip
+release/t1000e_companion_radio_ble-v1.17.1-abcdef12-meshcoreStation-v1.0.1.uf2.sha256
+release/t1000e_companion_radio_ble-v1.17.1-abcdef12-meshcoreStation-v1.0.1.zip.sha256
 ```
 
 The Heltec application `.bin` and matching `.json` are the application-update
 pair for meshcoreStation. The manifest's `image` references the renamed file;
 its device `target`, partition hash and image hash remain unchanged. Downloaders
 must use these versioned asset names/the manifest's `image`, not the previous
-fixed filename. The separate `-merged-meshcoreStation-v1.0.0.bin` is a full-flash image
+fixed filename. The separate `-merged-meshcoreStation-v1.0.1.bin` is a full-flash image
 including bootloader and partition table, not an application-update image.
 
 The T1000-E outputs match upstream formats: UF2 for its compatible UF2 bootloader
@@ -120,14 +120,14 @@ By default the firmware version is read from the companion source. Set
 FIRMWARE_VERSION=v1.17.1 bash build-station.sh
 ```
 
-The custom version is tracked separately in `meshcoreStation.version`, initially
-`v1.0.0`. Increment it for each new custom release (for example `v1.0.1` for a fix,
+The custom version is tracked separately in `meshcoreStation.version`, currently
+`v1.0.1`. Increment it for each new custom release (for example `v1.0.2` for the next fix,
 `v1.1.0` for a feature, `v2.0.0` for a breaking change), then commit and push it.
 It does not change the upstream MeshCore version. The manifest also records
 `meshcoreStation_version`, `meshcore_version` and the short Git `commit`.
 
 The companion protocol only has 20 bytes for its version field, so the device
-reports a compact combined version, e.g. `v1.17.1-MS1.0.0`. The full Git SHA is
+reports a compact combined version, e.g. `v1.17.1-MS1.0.1`. The full Git SHA is
 recorded in release notes and its short form in filenames. Build date uses
 upstream's date format.
 
@@ -159,7 +159,7 @@ Then use:
 ```
 
 This builds both firmwares and publishes the seven files from that build to
-`https://github.com/zebbel/MeshCore/releases/tag/meshcoreStation-v1.0.0` (the tag
+`https://github.com/zebbel/MeshCore/releases/tag/meshcoreStation-v1.0.1` (the tag
 uses the custom version file). Plain `./build-station.sh` still only builds.
 
 Release mode requires a clean committed checkout, with that exact commit pushed

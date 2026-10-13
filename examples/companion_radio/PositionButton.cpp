@@ -65,6 +65,46 @@ bool MyMesh::savePositionSettings(const PositionButtonConfig& c) {
   return ok;
 }
 
+// 0: ordinary chat, 1: saved locally, -1: local command rejected.
+int MyMesh::handlePositionButtonCommand(uint8_t channel_idx, const char* text, size_t len) {
+  auto space = [](char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; };
+  while (len && space(*text)) { ++text; --len; }
+  while (len && space(text[len - 1])) --len;
+  static const char prefix[] = "/position-button";
+  const size_t prefix_len = sizeof(prefix) - 1;
+  if (len < prefix_len || memcmp(text, prefix, prefix_len) != 0) return 0;
+  if (len == prefix_len || !space(text[prefix_len])) return -1;
+  text += prefix_len;
+  len -= prefix_len;
+  while (len && space(*text)) { ++text; --len; }
+
+  PositionButtonConfig next = _position.config;
+  if (len == 3 && memcmp(text, "off", 3) == 0) {
+    next.enabled = 0;
+  } else if (len == 2 && memcmp(text, "on", 2) == 0) {
+    ChannelDetails ch;
+    if (!getChannel(channel_idx, ch) || !privatePositionChannel(ch)
+        || !memchr(ch.name, 0, sizeof(ch.name))
+        || !PositionButtonState::validName(ch.name)) return -1;
+    // Select by the app's channel slot, so duplicate names are unambiguous.
+    // Persist destination and enable together: no partially applied setting.
+    memset(next.name, 0, sizeof(next.name));
+    strcpy(next.name, ch.name);
+    fingerprint(ch, next.fingerprint);
+    next.enabled = 1;
+  } else {
+    return -1;
+  }
+  if (!savePositionSettings(next)) {
+    _position.status = "storage_error";
+    return -1;
+  }
+  finishButtonPosition(next.enabled ? "idle" : "disabled");
+  _position.config = next;
+  if (_ui) _ui->notify(UIEventType::ack);
+  return 1;
+}
+
 bool MyMesh::setPositionSetting(const char* name, const char* value) {
   PositionButtonConfig next = _position.config;
   if (strcmp(name, "position_button") == 0) {

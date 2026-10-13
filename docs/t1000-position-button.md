@@ -14,10 +14,51 @@ Latitude comes first, longitude second, each with six decimal places. Negative
 coordinates retain their sign. Decimal precision does not imply GPS accuracy.
 The phone need not be connected when pressing the button.
 
-## Configure
+## Configure from the Android app (v1.0.1 and later)
 
-Create/import your private channel on the device using your companion app first.
-The custom firmware exposes these existing-protocol custom variables:
+First install the custom T1000-E firmware built from meshcoreStation v1.0.1 or
+later. The v1.0.0 firmware does not intercept these commands.
+
+1. Connect the app to the T1000-E over Bluetooth.
+2. Create/import your private channel on the device if needed.
+3. Open that private channel's chat and send this exact command:
+
+```text
+/position-button on
+```
+
+The firmware saves that channel as the destination and enables the button in one
+operation. A successful command returns the normal app success response and
+plays a short acknowledgement beep if the buzzer is enabled. The app may show
+the command as an outgoing message in its own history; it is **not transmitted
+on LoRa** and other channel members do not receive it. No special Android settings
+screen or computer Bluetooth is required. Settings survive restarting the device.
+
+To disable the feature, send this in a channel chat on the same connected device:
+
+```text
+/position-button off
+```
+
+It disables sending and cancels a pending position request while retaining the
+saved destination. To change destination, send `/position-button on` in the new
+private channel. The firmware selects the actual channel slot, so duplicate names
+are not ambiguous in this workflow. Received radio messages cannot configure the
+button: interception happens only on local app-to-companion send commands.
+Direct messages are not a configuration interface.
+
+Commands are lowercase. Leading/trailing spaces and line breaks are accepted.
+Invalid commands beginning with `/position-button` are rejected locally rather
+than transmitted. Public/default-key, empty-key and hashtag channels cannot be
+selected. Save failures or invalid destinations return an app error and leave
+the previous configuration intact. No local chat reply is synthesized.
+
+Go outdoors and press once to test. The firmware waits up to two minutes for a
+fresh GPS fix, then queues `position <latitude>, <longitude>` to that channel.
+
+### Alternative: custom-variable interface
+
+The firmware also exposes these variables through the companion protocol:
 
 | Variable | Value |
 | --- | --- |
@@ -25,16 +66,14 @@ The custom firmware exposes these existing-protocol custom variables:
 | `position_button` | `1` enables; `0` disables (default) |
 | `position_status` | Read-only state, e.g. `waiting`, `queued`, `no_fix` |
 
-Set the channel first, then enable the button. Both settings survive reboot.
-Channel names must be unique, at most 31 UTF-8 bytes, and contain no control
-characters, commas or colons. Empty channel name clears the selection and disables
-the feature. Public/default-key, empty-key and hashtag channels are rejected.
-Use a genuinely private channel with a random shared key; the firmware cannot
-know whether someone has otherwise published a channel key.
+Using this interface, set the channel first and then enable. Name-based selection
+requires a unique name. Channel names must be at most 31 UTF-8 bytes and contain
+no control characters, commas or colons. Empty channel name clears the selection
+and disables sending. Use a genuinely private channel with a random shared key;
+the firmware cannot know whether someone has otherwise published its key.
 
-If your Android app exposes a generic Sensor Settings/custom-variable editor,
-these are configured there. The menu/support in your installed app is still
-unverified; no Android app modification has been made in this repository.
+The user's Android app does not expose Sensor Settings/custom variables. Use the
+chat commands above, or the following helper on a computer with Bluetooth.
 
 ### BLE fallback on Debian or Raspberry Pi
 

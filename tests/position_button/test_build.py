@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory(prefix='dual build ') as directory:
     (repo / 'scripts').mkdir(parents=True)
     (repo / 'platformio.ini').write_text('')
     shutil.copy(ROOT / 'build-station.sh', repo / 'build-station.sh')
-    shutil.copy(ROOT / 'meshcoreStation.version', repo / 'meshcoreStation.version')
+    (repo / 'meshcoreStation.version').write_text('v1.0.0\n')
     (repo / 'examples/companion_radio').mkdir(parents=True)
     shutil.copy(ROOT / 'examples/companion_radio/MyMesh.h', repo / 'examples/companion_radio/MyMesh.h')
     subprocess.run(['git', 'init', '-q', str(repo)], check=True)
