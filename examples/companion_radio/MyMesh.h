@@ -220,6 +220,7 @@ private:
   bool _statusLedEnabled = true;
   PositionButtonState _position;
   void loadPositionSettings();
+  void capturePositionScope(PositionButtonConfig&);
   bool savePositionSettings(const PositionButtonConfig& config);
   bool setPositionSetting(const char* name, const char* value);
   bool findPositionChannel(ChannelDetails& channel);

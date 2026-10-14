@@ -43,6 +43,9 @@ void MyMesh::loadPositionSettings() {
   led.close();
   auto f = _store->openRead(SETTINGS_FILE);
   if (!f) return;
+  // Older records have no bound scope. Require reconfiguration instead of
+  // accidentally sending position messages outside the intended region.
+  _position.status = "configure_required";
   PositionButtonConfig c;
   uint8_t stored[32], digest[32];
   bool ok = f.size() == sizeof(c) + sizeof(stored)
@@ -50,11 +53,19 @@ void MyMesh::loadPositionSettings() {
       && f.read(stored, sizeof(stored)) == sizeof(stored);
   f.close();
   mesh::Utils::sha256(digest, sizeof(digest), (uint8_t*)&c, sizeof(c));
-  if (!ok || memcmp(digest, stored, 32) || memcmp(c.magic, "PB01", 4)
+  if (!ok || memcmp(digest, stored, 32) || memcmp(c.magic, "PB02", 4)
       || c.enabled > 1 || c.name[31] != 0
       || (c.name[0] && !PositionButtonState::validName(c.name))) return;
   _position.config = c;
   _position.status = c.enabled ? "idle" : "disabled";
+}
+
+void MyMesh::capturePositionScope(PositionButtonConfig& config) {
+  memset(config.scopeKey, 0, sizeof(config.scopeKey));
+  if (!send_unscoped) {
+    const uint8_t* key = send_scope.isNull() ? _prefs.default_scope_key : send_scope.key;
+    memcpy(config.scopeKey, key, sizeof(config.scopeKey));
+  }
 }
 
 bool MyMesh::savePositionSettings(const PositionButtonConfig& c) {
@@ -120,6 +131,7 @@ int MyMesh::handlePositionButtonCommand(uint8_t channel_idx, const char* text, s
     memset(next.name, 0, sizeof(next.name));
     strcpy(next.name, ch.name);
     fingerprint(ch, next.fingerprint);
+    capturePositionScope(next);
     next.enabled = 1;
   } else {
     return -1;
@@ -160,6 +172,7 @@ bool MyMesh::setPositionSetting(const char* name, const char* value) {
       memset(next.name, 0, sizeof(next.name));
       strcpy(next.name, value);
       fingerprint(selected, next.fingerprint);
+      capturePositionScope(next);
     }
   } else {
     return false; // position_status is read-only
@@ -199,9 +212,17 @@ void MyMesh::loopButtonPosition() {
     finishButtonPosition("no_fix");
     return;
   }
+  // Scope overrides are transient app state. Use the scope captured with this
+  // destination, then restore app state after the synchronous packet enqueue.
+  const TransportKey previousScope = send_scope;
+  const bool previousUnscoped = send_unscoped;
+  memcpy(send_scope.key, _position.config.scopeKey, sizeof(send_scope.key));
+  send_unscoped = send_scope.isNull(); // do not fall back to a changed default
   // Timestamp the message now, even when the position has not changed.
   bool sent = sendGroupMessage(getRTCClock()->getCurrentTimeUnique(), ch.channel,
                                _prefs.node_name, text, strlen(text));
+  send_scope = previousScope;
+  send_unscoped = previousUnscoped;
   if (sent) {
     _position.hasSent = true;
     _position.lastSent = millis();

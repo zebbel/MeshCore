@@ -138,4 +138,48 @@ int main() {
   assert(phone.handlePositionButtonCommand(2, bounded, sizeof(bounded) - 1) == 1);
   assert(phone.handlePositionButtonCommand(2, bounded, sizeof(bounded)) == -1);
 
+  // Scope is captured with the channel, survives reboot, and ignores subsequent
+  // app overrides/default changes. Enqueue restores all app state, even on error.
+  DataStore scopedStore;
+  MyMesh scoped(scopedStore);
+  scoped.channels[1] = phone.channels[1];
+  scoped.send_scope.key[0] = 31;
+  const char* on = "/position-button on";
+  assert(scoped.handlePositionButtonCommand(1, on, strlen(on)) == 1);
+  MyMesh scopedBoot(scopedStore); scopedBoot.loadPositionSettings();
+  scopedBoot.channels[1] = scoped.channels[1];
+  assert(scopedBoot._position.config.scopeKey[0] == 31);
+  scopedBoot.send_scope.key[0] = 99;
+  scopedBoot.send_unscoped = true;
+  scopedBoot._prefs.default_scope_key[0] = 88;
+  scopedBoot.requestButtonPosition(); scopedBoot.loopButtonPosition();
+  assert(scopedBoot.sent == 1 && scopedBoot.lastScope[0] == 31);
+  assert(scopedBoot.send_scope.key[0] == 99 && scopedBoot.send_unscoped);
+  now += 10000;
+  scopedBoot.sendOK = false;
+  scopedBoot.requestButtonPosition(); scopedBoot.loopButtonPosition();
+  assert(scopedBoot.send_scope.key[0] == 99 && scopedBoot.send_unscoped);
+  scopedBoot.sendOK = true;
+  // Explicitly unscoped remains unscoped even when a default is later set.
+  assert(scopedBoot.handlePositionButtonCommand(1, on, strlen(on)) == 1);
+  scopedBoot.send_unscoped = false;
+  scopedBoot.requestButtonPosition(); scopedBoot.loopButtonPosition();
+  uint8_t noScope[16] = {};
+  assert(memcmp(scopedBoot.lastScope, noScope, 16) == 0);
+  assert(!scopedBoot.send_unscoped && scopedBoot.send_scope.key[0] == 99);
+  // Snapshot the effective default when there is no app override.
+  now += 10000;
+  memset(scopedBoot.send_scope.key, 0, 16);
+  assert(scopedBoot.handlePositionButtonCommand(1, on, strlen(on)) == 1);
+  scopedBoot._prefs.default_scope_key[0] = 77;
+  scopedBoot.requestButtonPosition(); scopedBoot.loopButtonPosition();
+  assert(scopedBoot.lastScope[0] == 88);
+  assert(scopedBoot.send_scope.isNull() && !scopedBoot.send_unscoped);
+  // PB01 records lack a scope and must not silently enable unscoped sending.
+  auto& oldRecord = *scopedStore.fs.files["/position_button"];
+  oldRecord.resize(69 + 32); oldRecord[3] = '1';
+  MyMesh legacy(scopedStore); legacy.loadPositionSettings();
+  assert(!legacy._position.config.enabled);
+  assert(strcmp(legacy._position.status, "configure_required") == 0);
+
 }

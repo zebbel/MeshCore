@@ -62,6 +62,10 @@ struct FakeSensors {
 extern FakeSensors sensors;
 enum class UIEventType { ack };
 struct FakeUI { int acks = 0; void notify(UIEventType) { ++acks; } };
+struct TransportKey {
+  uint8_t key[16] = {};
+  bool isNull() const { uint8_t zero[16] = {}; return memcmp(key, zero, 16) == 0; }
+};
 class MyMesh {
 public:
   bool _statusLedEnabled = true;
@@ -69,7 +73,10 @@ public:
   DataStore* _store;
   FakeUI* _ui = nullptr;
   bool _cli_rescue = false, sendOK = true;
-  struct { char node_name[32] = "test"; } _prefs;
+  struct { char node_name[32] = "test"; uint8_t default_scope_key[16] = {}; } _prefs;
+  TransportKey send_scope;
+  bool send_unscoped = false;
+  uint8_t lastScope[16] = {};
   ChannelDetails channels[40];
   struct FakeClock { uint32_t getCurrentTimeUnique() { return 1800000000 + now; } } clock;
   FakeClock* getRTCClock() { return &clock; }
@@ -78,11 +85,14 @@ public:
   bool getChannel(int i, ChannelDetails& ch) { if (i < 0 || i >= 40) return false; ch = channels[i]; return true; }
   template<class C> bool sendGroupMessage(uint32_t, const C& ch, const char*, const char* text, size_t) {
     if (!sendOK) return false;
+    memset(lastScope, 0, sizeof(lastScope));
+    if (!send_unscoped) memcpy(lastScope, send_scope.isNull() ? _prefs.default_scope_key : send_scope.key, 16);
     ++sent; lastText = text; lastKey = ch.secret[0]; return true;
   }
   bool privatePositionChannel(const ChannelDetails&);
   bool findPositionChannel(ChannelDetails&);
   void loadPositionSettings();
+  void capturePositionScope(PositionButtonConfig&);
   bool savePositionSettings(const PositionButtonConfig&);
   bool setPositionSetting(const char*, const char*);
   void finishButtonPosition(const char*);

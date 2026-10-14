@@ -59,6 +59,23 @@ GPS on, and does not require the receiver to report a valid fix. The stored
 position may be older or manually configured. Unset (0,0), non-finite or
 out-of-range coordinates are not sent (`no_fix`).
 
+### Channel scope (v1.0.4 and later)
+
+Choose the intended channel scope in Android, then send `/position-button on`
+in that channel. The firmware captures the effective scope supplied by the app
+for this command (or the device default when no override is active), and saves
+it together with the destination. Button sends use this saved scope after
+restarts, independently of later app overrides or default-scope changes. An
+explicitly unscoped selection stays unscoped. Normal app send settings are
+restored after queueing the button message, including on queue failure.
+
+The firmware does not receive a persistent per-channel scope table from the app.
+If you change the channel scope, send `/position-button on` again in that chat.
+After upgrading from older firmware, repeat this command once: old position
+settings without a scope are disabled (`configure_required`). LED settings remain
+unchanged. With the BLE helper, selecting `position_channel` captures the current
+device scope; enabling the button later preserves that captured scope.
+
 ### Four-second LED blink (v1.0.2 and later)
 
 Send `/led off` in any channel chat on the connected T1000-E to disable the
