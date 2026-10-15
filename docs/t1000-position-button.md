@@ -63,6 +63,16 @@ than transmitted. Public/default-key, empty-key and hashtag channels cannot be
 selected. Save failures or invalid destinations return an app error and leave
 the previous configuration intact. No local chat reply is synthesized.
 
+### Local command list (`/?`)
+
+Send `/?` in a channel or room-server chat to display the available
+meshcoreStation firmware commands in the same Android chat. The companion
+queues a local help message using the standard message-sync protocol; it does
+not transmit the command or its response over LoRa. Help works only while the
+app is connected to this companion, and does not affect the saved destination.
+A full offline message queue causes the help request to fail rather than
+replace received radio messages. Ordinary contact chats are not intercepted.
+
 In v1.0.3 and later, press once to queue `position <latitude>, <longitude>` using the currently
 stored device position used for adverts. It does not wait for a new fix or switch
 GPS on, and does not require the receiver to report a valid fix. The stored

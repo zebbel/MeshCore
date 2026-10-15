@@ -429,6 +429,27 @@ ContactInfo*  MyMesh::processAck(const uint8_t *data) {
   return checkConnectionsAck(data);
 }
 
+#ifdef ENABLE_POSITION_BUTTON
+// Queue a synthetic locally-received message. The Android client already
+// retrieves these through CMD_SYNC_NEXT_MESSAGE after PUSH_CODE_MSG_WAITING.
+// Reject an already-full queue so help never evicts real radio traffic.
+bool MyMesh::queueLocalHelp(uint8_t channel_idx, const ContactInfo* room) {
+  if (offline_queue_len >= OFFLINE_QUEUE_SIZE) return false;
+  if (room) {
+    if (room->type != ADV_TYPE_ROOM) return false;
+  } else {
+    ChannelDetails channel;
+    if (!getChannel(channel_idx, channel) || !channel.name[0]) return false;
+  }
+  size_t size = LocalHelp::buildFrame(out_frame, MAX_FRAME_SIZE, app_target_ver,
+                                     channel_idx, room ? room->id.pub_key : nullptr,
+                                     getRTCClock()->getCurrentTimeUnique());
+  if (!size) return false;
+  addToOfflineQueue(out_frame, static_cast<int>(size));
+  return true;
+}
+#endif
+
 void MyMesh::queueMessage(const ContactInfo &from, uint8_t txt_type, mesh::Packet *pkt,
                           uint32_t sender_timestamp, const uint8_t *extra, int extra_len, const char *text) {
   int i = 0;
@@ -1120,6 +1141,19 @@ void MyMesh::handleCmdFrame(size_t len) {
         // locally-originated plain messages to advertised room-server contacts.
         // Radio-received posts and ordinary DMs must never configure the button.
         if (recipient->type == ADV_TYPE_ROOM) {
+          if (LocalHelp::isRequest(text, tlen)) {
+            if (!queueLocalHelp(0, recipient)) {
+              writeErrFrame(ERR_CODE_TABLE_FULL);
+            } else {
+              // A contact send must return SENT. No radio message or ACK is made.
+              memset(out_frame, 0, 10);
+              out_frame[0] = RESP_CODE_SENT;
+              _serial->writeFrame(out_frame, 10);
+              const uint8_t waiting[] = {PUSH_CODE_MSG_WAITING};
+              _serial->writeFrame(waiting, sizeof(waiting));
+            }
+            return;
+          }
           int command = handlePositionButtonCommand(0, text, tlen, recipient);
           if (command != 0) {
             if (command < 0) {
@@ -1175,6 +1209,16 @@ void MyMesh::handleCmdFrame(size_t len) {
     // Only intercept commands from the locally connected app, never received
     // radio messages. Consume the entire command namespace, including errors.
     if (txt_type == TXT_TYPE_PLAIN) {
+      if (LocalHelp::isRequest(text, len - i)) {
+        if (!queueLocalHelp(channel_idx, nullptr)) {
+          writeErrFrame(ERR_CODE_TABLE_FULL);
+        } else {
+          writeOKFrame();
+          const uint8_t waiting[] = {PUSH_CODE_MSG_WAITING};
+          _serial->writeFrame(waiting, sizeof(waiting));
+        }
+        return;
+      }
       int result = handlePositionButtonCommand(channel_idx, text, len - i);
       if (result != 0) {
         if (result > 0) writeOKFrame();

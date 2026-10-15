@@ -27,6 +27,7 @@
 #include "NodePrefs.h"
 #ifdef ENABLE_POSITION_BUTTON
 #include "PositionButton.h"
+#include "LocalHelp.h"
 #endif
 
 #include <RTClib.h>
@@ -229,6 +230,7 @@ private:
   bool privatePositionChannel(const ChannelDetails& channel);
   void loopButtonPosition();
   void finishButtonPosition(const char* status);
+  bool queueLocalHelp(uint8_t channel_idx, const ContactInfo* room);
 #endif
   DataStore* _store;
   NodePrefs _prefs;
