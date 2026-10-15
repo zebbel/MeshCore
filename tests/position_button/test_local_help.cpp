@@ -14,11 +14,15 @@ int main() {
   assert(!LocalHelp::isRequest(nullptr, 0));
 
   const uint32_t ts = 0x12345678;
-  uint8_t frame[256] = {};
+  // The serial protocol does not allow 256-byte frames. Test with its real
+  // 176-byte limit, including the largest v3 room-server header.
+  constexpr size_t frameLimit = 176;
+  uint8_t frame[frameLimit + 1] = {};
+  frame[frameLimit] = 0xAB; // guard byte beyond the on-device frame buffer
   uint8_t key[32] = {};
   for (int i = 0; i < 32; ++i) key[i] = i;
   for (int v3 = 0; v3 <= 1; ++v3) {
-    size_t n = LocalHelp::buildFrame(frame, sizeof(frame), v3 ? 3 : 2, 5, nullptr, ts);
+    size_t n = LocalHelp::buildFrame(frame, frameLimit, v3 ? 3 : 2, 5, nullptr, ts);
     assert(n > 10);
     assert(frame[0] == (v3 ? 17 : 8));
     const size_t base = v3 ? 4 : 1;
@@ -27,8 +31,9 @@ int main() {
     assert(frame[base + 3] == 0x78 && frame[base + 6] == 0x12);
     assert(memcmp(frame + base + 7, LocalHelp::kHelpText, strlen(LocalHelp::kHelpText)) == 0);
     assert(n == base + 7 + strlen(LocalHelp::kHelpText));
+    assert(n <= frameLimit);
 
-    n = LocalHelp::buildFrame(frame, sizeof(frame), v3 ? 3 : 2, 5, key, ts);
+    n = LocalHelp::buildFrame(frame, frameLimit, v3 ? 3 : 2, 5, key, ts);
     assert(n > 15);
     assert(frame[0] == (v3 ? 16 : 7));
     assert(memcmp(frame + base, key, 6) == 0);
@@ -36,10 +41,14 @@ int main() {
     assert(frame[base + 8] == 0x78 && frame[base + 11] == 0x12);
     assert(memcmp(frame + base + 12, LocalHelp::kHelpText, strlen(LocalHelp::kHelpText)) == 0);
     assert(n == base + 12 + strlen(LocalHelp::kHelpText));
+    assert(n <= frameLimit);
+    // A buffer even one byte shorter than the complete frame is rejected.
+    assert(LocalHelp::buildFrame(frame, n - 1, v3 ? 3 : 2, 5, key, ts) == 0);
+    assert(frame[frameLimit] == 0xAB);
   }
   // Short buffers must remain untouched.
   memset(frame, 0xAA, sizeof(frame));
   assert(LocalHelp::buildFrame(frame, 8, 3, 2, nullptr, ts) == 0);
   assert(frame[0] == 0xAA);
-  assert(LocalHelp::buildFrame(nullptr, 256, 3, 2, nullptr, ts) == 0);
+  assert(LocalHelp::buildFrame(nullptr, frameLimit, 3, 2, nullptr, ts) == 0);
 }

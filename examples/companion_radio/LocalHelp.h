@@ -6,13 +6,17 @@
 // Local-only help frames use standard companion message receive packets so
 // existing clients can show them in the chat without changes or LoRa traffic.
 namespace LocalHelp {
+// Companion frames are capped at 176 bytes. The largest (v3 contact) header
+// uses 16 bytes, so help text must fit within 160 bytes including both chat
+// types. Keep this check here so a future command addition cannot regress it.
 static const char kHelpText[] =
-    "meshcoreStation: Available commands\n"
-    "/? - Show this help\n"
-    "/position-button on - Send GPS to this chat\n"
-    "/position-button off - Disable GPS button\n"
-    "/led on - Enable LED blink\n"
-    "/led off - Disable LED blink";
+    "/? - Show help\n"
+    "/position-button on - Send GPS here\n"
+    "/position-button off - Disable button\n"
+    "/led on - Blink on\n"
+    "/led off - Blink off";
+static_assert(sizeof(kHelpText) - 1 + 16 <= 176,
+              "Help reply exceeds maximum companion frame size");
 
 inline bool isRequest(const char* text, size_t len) {
   if (!text) return false;
