@@ -7,6 +7,10 @@
 #include <memory>
 #define MAX_GROUP_CHANNELS 40
 #define FILE_O_WRITE 1
+#define PUB_KEY_SIZE 32
+#define ADV_TYPE_ROOM 3
+#define MSG_SEND_FAILED 0
+struct ContactInfo { struct { uint8_t pub_key[32] = {}; } id; char name[32] = {}; uint8_t type = 0; };
 extern uint32_t now;
 inline uint32_t millis() { return now; }
 struct ChannelDetails { char name[32] = {}; struct { uint8_t secret[32] = {}; } channel; };
@@ -78,11 +82,25 @@ public:
   bool send_unscoped = false;
   uint8_t lastScope[16] = {};
   ChannelDetails channels[40];
+  ContactInfo roomContact;
+  bool hasRoom = false;
+  uint8_t lastRoomKey = 0;
   struct FakeClock { uint32_t getCurrentTimeUnique() { return 1800000000 + now; } } clock;
   FakeClock* getRTCClock() { return &clock; }
   int sent = 0; std::string lastText; uint8_t lastKey = 0;
   explicit MyMesh(DataStore& store): _store(&store) {}
   bool getChannel(int i, ChannelDetails& ch) { if (i < 0 || i >= 40) return false; ch = channels[i]; return true; }
+  ContactInfo* lookupContactByPubKey(const uint8_t* pub_key, int len) {
+    return hasRoom && memcmp(roomContact.id.pub_key, pub_key, len) == 0 ? &roomContact : nullptr;
+  }
+  int sendMessage(const ContactInfo& room, uint32_t, uint8_t, const char* text, uint32_t& ack, uint32_t& timeout) {
+    if (!sendOK) return MSG_SEND_FAILED;
+    ack = 0;
+    timeout = 0;
+    memset(lastScope, 0, sizeof(lastScope));
+    if (!send_unscoped) memcpy(lastScope, send_scope.isNull() ? _prefs.default_scope_key : send_scope.key, 16);
+    ++sent; lastText = text; lastRoomKey = room.id.pub_key[0]; return 1;
+  }
   template<class C> bool sendGroupMessage(uint32_t, const C& ch, const char*, const char* text, size_t) {
     if (!sendOK) return false;
     memset(lastScope, 0, sizeof(lastScope));
@@ -91,6 +109,7 @@ public:
   }
   bool privatePositionChannel(const ChannelDetails&);
   bool findPositionChannel(ChannelDetails&);
+  bool findPositionRoom(ContactInfo&);
   void loadPositionSettings();
   void capturePositionScope(PositionButtonConfig&);
   bool savePositionSettings(const PositionButtonConfig&);
@@ -98,6 +117,6 @@ public:
   void finishButtonPosition(const char*);
   bool isStatusLedEnabled() const { return _statusLedEnabled; }
   void requestButtonPosition();
-  int handlePositionButtonCommand(uint8_t, const char*, size_t);
+  int handlePositionButtonCommand(uint8_t, const char*, size_t, const ContactInfo* room = nullptr);
   void loopButtonPosition();
 };

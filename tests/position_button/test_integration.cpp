@@ -175,6 +175,78 @@ int main() {
   scopedBoot.requestButtonPosition(); scopedBoot.loopButtonPosition();
   assert(scopedBoot.lastScope[0] == 88);
   assert(scopedBoot.send_scope.isNull() && !scopedBoot.send_unscoped);
+
+  // Room-server chat is a direct contact, not a group channel. The local app
+  // command saves the room's full identity; only subsequent button presses send.
+  DataStore roomStore;
+  MyMesh roomMesh(roomStore);
+  roomMesh.hasRoom = true;
+  strcpy(roomMesh.roomContact.name, "Bot room");
+  roomMesh.roomContact.type = ADV_TYPE_ROOM;
+  roomMesh.roomContact.id.pub_key[0] = 123;
+  roomMesh.roomContact.id.pub_key[31] = 99;
+  roomMesh.send_scope.key[0] = 44;
+  const char* roomOn = "/position-button on";
+  assert(roomMesh.handlePositionButtonCommand(0, roomOn, strlen(roomOn), &roomMesh.roomContact) == 1);
+  assert(roomMesh.sent == 0);
+  assert(roomMesh._position.config.enabled);
+  assert(roomMesh._position.config.destinationType == POSITION_DEST_ROOM);
+  assert(strcmp(roomMesh._position.config.name, "Bot room") == 0);
+  assert(roomMesh._position.config.fingerprint[0] == 123);
+  assert(roomMesh._position.config.fingerprint[31] == 99);
+  assert(roomMesh.handlePositionButtonCommand(0, "hello", 5, &roomMesh.roomContact) == 0);
+  assert(roomMesh.handlePositionButtonCommand(0, "/position-button typo", 21, &roomMesh.roomContact) == -1);
+  ContactInfo notRoom = roomMesh.roomContact;
+  notRoom.type = 0;
+  assert(roomMesh.handlePositionButtonCommand(0, roomOn, strlen(roomOn), &notRoom) == -1);
+  MyMesh restoredRoom(roomStore);
+  restoredRoom.hasRoom = true;
+  restoredRoom.roomContact = roomMesh.roomContact;
+  restoredRoom.loadPositionSettings();
+  assert(restoredRoom._position.config.enabled);
+  assert(restoredRoom._position.config.destinationType == POSITION_DEST_ROOM);
+  restoredRoom._prefs.default_scope_key[0] = 11;
+  restoredRoom.send_scope.key[0] = 88;
+  restoredRoom.requestButtonPosition(); restoredRoom.loopButtonPosition();
+  assert(restoredRoom.sent == 1 && restoredRoom.lastRoomKey == 123);
+  assert(restoredRoom.lastText == "position 52.123456, 13.123456");
+  assert(restoredRoom.lastScope[0] == 44);
+  assert(restoredRoom.send_scope.key[0] == 88 && !restoredRoom.send_unscoped);
+  now += 10000;
+  strcpy(restoredRoom.roomContact.name, "Renamed bot room");
+  restoredRoom.requestButtonPosition(); restoredRoom.loopButtonPosition();
+  assert(restoredRoom.sent == 2);  // a room rename does not change its identity
+  now += 10000;
+  restoredRoom.roomContact.id.pub_key[31]++;
+  restoredRoom.requestButtonPosition();
+  assert(!restoredRoom._position.pending && strcmp(restoredRoom._position.status, "room_missing") == 0);
+  assert(!restoredRoom.setPositionSetting("position_button", "1"));
+  restoredRoom.roomContact.id.pub_key[31]--;
+  assert(restoredRoom.setPositionSetting("position_button", "0"));
+  assert(!restoredRoom._position.config.enabled);
+  restoredRoom.requestButtonPosition(); assert(!restoredRoom._position.pending);
+  assert(restoredRoom.setPositionSetting("position_button", "1"));
+  restoredRoom.sendOK = false;
+  restoredRoom.requestButtonPosition(); restoredRoom.loopButtonPosition();
+  assert(restoredRoom.sent == 2 && strcmp(restoredRoom._position.status, "send_failed") == 0);
+  restoredRoom.sendOK = true;
+
+  // A PB02 channel selection remains enabled after a PB03 firmware upgrade.
+  DataStore legacyV2Store;
+  MyMesh legacyV2Config(legacyV2Store);
+  legacyV2Config.channels[1] = scoped.channels[1];
+  assert(legacyV2Config.handlePositionButtonCommand(1, on, strlen(on)) == 1);
+  auto& v2 = *legacyV2Store.fs.files["/position_button"];
+  v2.erase(v2.begin() + 85);  // remove PB03 destinationType before the digest
+  memcpy(v2.data(), "PB02", 4);
+  uint8_t oldHash[32];
+  mesh::Utils::sha256(oldHash, sizeof(oldHash), v2.data(), 85);
+  memcpy(v2.data() + 85, oldHash, 32);
+  MyMesh legacyV2(legacyV2Store);
+  legacyV2.loadPositionSettings();
+  assert(legacyV2._position.config.enabled && legacyV2._position.config.destinationType == POSITION_DEST_CHANNEL);
+  assert(strcmp(legacyV2._position.config.name, "Family") == 0);
+
   // PB01 records lack a scope and must not silently enable unscoped sending.
   auto& oldRecord = *scopedStore.fs.files["/position_button"];
   oldRecord.resize(69 + 32); oldRecord[3] = '1';

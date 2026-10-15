@@ -1,10 +1,10 @@
-# T1000-E private-channel position button
+# T1000-E channel/room-server position button
 
 Custom environment: `t1000e_companion_radio_ble_position`. This is the BLE
 companion, retaining the normal app connection and other button gestures.
 The standard T1000-E environments are unchanged.
 
-A single short press sends one ordinary encrypted channel text message:
+A single short press sends one ordinary encrypted channel or room-server text message:
 
 ```text
 position 52.123456, 13.123456
@@ -34,6 +34,16 @@ the command as an outgoing message in its own history; it is **not transmitted
 on LoRa** and other channel members do not receive it. No special Android settings
 screen or computer Bluetooth is required. Settings survive restarting the device.
 
+### Select a room-server chat as the destination
+
+You can also open a room-server **contact** in the Android app and send
+`/position-button on` in its chat. The firmware now intercepts this locally,
+stores the room's full public key, and sends future button positions as encrypted
+direct messages to that server. Room-server posts and normal direct messages are
+not interpreted as configuration commands. The room must remain available as a
+room-server contact. Removing/changing its identity yields `room_missing` until
+you select it again. Commands in chats with ordinary contacts are not intercepted.
+
 To disable the feature, send this in a channel chat on the same connected device:
 
 ```text
@@ -42,10 +52,10 @@ To disable the feature, send this in a channel chat on the same connected device
 
 It disables sending and cancels a pending position request while retaining the
 saved destination. To change destination, send `/position-button on` in the new
-private channel. The firmware selects the actual channel slot, so duplicate names
+private channel or room-server chat. For channels, the firmware selects the slot, so duplicate names
 are not ambiguous in this workflow. Received radio messages cannot configure the
 button: interception happens only on local app-to-companion send commands.
-Direct messages are not a configuration interface.
+Direct messages to ordinary contacts are not a configuration interface.
 
 Commands are lowercase. Leading/trailing spaces and line breaks are accepted.
 Invalid commands beginning with `/position-button` are rejected locally rather
@@ -59,7 +69,7 @@ GPS on, and does not require the receiver to report a valid fix. The stored
 position may be older or manually configured. Unset (0,0), non-finite or
 out-of-range coordinates are not sent (`no_fix`).
 
-### Channel scope (v1.0.4 and later)
+### Saved transport scope (v1.0.4 and later)
 
 Choose the intended channel scope in Android, then send `/position-button on`
 in that channel. The firmware captures the effective scope supplied by the app
@@ -68,6 +78,11 @@ it together with the destination. Button sends use this saved scope after
 restarts, independently of later app overrides or default-scope changes. An
 explicitly unscoped selection stays unscoped. Normal app send settings are
 restored after queueing the button message, including on queue failure.
+Room-server destinations capture the app's effective scope the same way; it is
+used if a room message must be flooded, while known direct routes use the usual
+MeshCore direct routing.
+
+Stored PB02 private-channel settings are migrated in memory to PB03 on reboot.
 
 The firmware does not receive a persistent per-channel scope table from the app.
 If you change the channel scope, send `/position-button on` again in that chat.
@@ -95,7 +110,8 @@ The firmware also exposes these variables through the companion protocol:
 
 | Variable | Value |
 | --- | --- |
-| `position_channel` | Exact existing private channel name (case-sensitive) |
+| `position_channel` | Selected private channel name (empty when using a room) |
+| `position_room` | Read-only name of selected room-server contact (empty when using a channel) |
 | `position_button` | `1` enables; `0` disables (default) |
 | `position_status` | Read-only state, e.g. `waiting`, `queued`, `no_fix` |
 

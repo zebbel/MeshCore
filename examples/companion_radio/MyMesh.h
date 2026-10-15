@@ -104,7 +104,8 @@ public:
 #ifdef ENABLE_POSITION_BUTTON
   bool isStatusLedEnabled() const { return _statusLedEnabled; }
   void requestButtonPosition();
-  int handlePositionButtonCommand(uint8_t channel_idx, const char* text, size_t len);
+  int handlePositionButtonCommand(uint8_t channel_idx, const char* text, size_t len,
+                                  const ContactInfo* room = nullptr);
 #endif
   void enterCLIRescue();
 
@@ -224,6 +225,7 @@ private:
   bool savePositionSettings(const PositionButtonConfig& config);
   bool setPositionSetting(const char* name, const char* value);
   bool findPositionChannel(ChannelDetails& channel);
+  bool findPositionRoom(ContactInfo& room);
   bool privatePositionChannel(const ChannelDetails& channel);
   void loopButtonPosition();
   void finishButtonPosition(const char* status);

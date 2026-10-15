@@ -31,6 +31,17 @@ bool MyMesh::findPositionChannel(ChannelDetails& ch) {
   return false;
 }
 
+bool MyMesh::findPositionRoom(ContactInfo& room) {
+  if (_position.config.destinationType != POSITION_DEST_ROOM) return false;
+  // Match the complete stored public key; never fall back to a name match or
+  // substitute another contact if the room disappears or changes identity.
+  ContactInfo* contact = lookupContactByPubKey(_position.config.fingerprint, PUB_KEY_SIZE);
+  if (!contact || contact->type != ADV_TYPE_ROOM ||
+      memcmp(contact->id.pub_key, _position.config.fingerprint, PUB_KEY_SIZE) != 0) return false;
+  room = *contact;
+  return true;
+}
+
 void MyMesh::loadPositionSettings() {
   // Independent record keeps existing position settings compatible.
   auto led = _store->openRead("/status_led");
@@ -48,14 +59,21 @@ void MyMesh::loadPositionSettings() {
   _position.status = "configure_required";
   PositionButtonConfig c;
   uint8_t stored[32], digest[32];
-  bool ok = f.size() == sizeof(c) + sizeof(stored)
-      && f.read((uint8_t*)&c, sizeof(c)) == sizeof(c)
+  // Existing PB02 records have the same fields minus destinationType.
+  // Validate their original checksum before upgrading in memory to PB03.
+  bool legacy = f.size() == sizeof(c) - 1 + sizeof(stored);
+  size_t configSize = legacy ? sizeof(c) - 1 : sizeof(c);
+  bool ok = (legacy || f.size() == sizeof(c) + sizeof(stored))
+      && f.read((uint8_t*)&c, configSize) == configSize
       && f.read(stored, sizeof(stored)) == sizeof(stored);
   f.close();
-  mesh::Utils::sha256(digest, sizeof(digest), (uint8_t*)&c, sizeof(c));
-  if (!ok || memcmp(digest, stored, 32) || memcmp(c.magic, "PB02", 4)
+  if (!ok) return;
+  mesh::Utils::sha256(digest, sizeof(digest), (uint8_t*)&c, configSize);
+  if (memcmp(digest, stored, 32) || memcmp(c.magic, legacy ? "PB02" : "PB03", 4)
       || c.enabled > 1 || c.name[31] != 0
-      || (c.name[0] && !PositionButtonState::validName(c.name))) return;
+      || (c.name[0] && !PositionButtonState::validName(c.name))
+      || c.destinationType > POSITION_DEST_ROOM) return;
+  if (legacy) memcpy(c.magic, "PB03", 4);
   _position.config = c;
   _position.status = c.enabled ? "idle" : "disabled";
 }
@@ -85,7 +103,8 @@ bool MyMesh::savePositionSettings(const PositionButtonConfig& c) {
 }
 
 // 0: ordinary chat, 1: saved locally, -1: local command rejected.
-int MyMesh::handlePositionButtonCommand(uint8_t channel_idx, const char* text, size_t len) {
+int MyMesh::handlePositionButtonCommand(uint8_t channel_idx, const char* text, size_t len,
+                                         const ContactInfo* room) {
   auto space = [](char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; };
   while (len && space(*text)) { ++text; --len; }
   while (len && space(text[len - 1])) --len;
@@ -122,15 +141,23 @@ int MyMesh::handlePositionButtonCommand(uint8_t channel_idx, const char* text, s
   if (len == 3 && memcmp(text, "off", 3) == 0) {
     next.enabled = 0;
   } else if (len == 2 && memcmp(text, "on", 2) == 0) {
-    ChannelDetails ch;
-    if (!getChannel(channel_idx, ch) || !privatePositionChannel(ch)
-        || !memchr(ch.name, 0, sizeof(ch.name))
-        || !PositionButtonState::validName(ch.name)) return -1;
-    // Select by the app's channel slot, so duplicate names are unambiguous.
-    // Persist destination and enable together: no partially applied setting.
     memset(next.name, 0, sizeof(next.name));
-    strcpy(next.name, ch.name);
-    fingerprint(ch, next.fingerprint);
+    if (room) {
+      if (room->type != ADV_TYPE_ROOM || !memchr(room->name, 0, sizeof(room->name))
+          || !PositionButtonState::validName(room->name)) return -1;
+      strcpy(next.name, room->name);
+      memcpy(next.fingerprint, room->id.pub_key, PUB_KEY_SIZE);
+      next.destinationType = POSITION_DEST_ROOM;
+    } else {
+      ChannelDetails ch;
+      if (!getChannel(channel_idx, ch) || !privatePositionChannel(ch)
+          || !memchr(ch.name, 0, sizeof(ch.name))
+          || !PositionButtonState::validName(ch.name)) return -1;
+      // Select by the app's channel slot, not its (possibly duplicated) name.
+      strcpy(next.name, ch.name);
+      fingerprint(ch, next.fingerprint);
+      next.destinationType = POSITION_DEST_CHANNEL;
+    }
     capturePositionScope(next);
     next.enabled = 1;
   } else {
@@ -150,8 +177,15 @@ bool MyMesh::setPositionSetting(const char* name, const char* value) {
   PositionButtonConfig next = _position.config;
   if (strcmp(name, "position_button") == 0) {
     if (strcmp(value, "0") && strcmp(value, "1")) return false;
-    ChannelDetails ch;
-    if (value[0] == '1' && !findPositionChannel(ch)) return false;
+    if (value[0] == '1') {
+      if (next.destinationType == POSITION_DEST_ROOM) {
+        ContactInfo room;
+        if (!findPositionRoom(room)) return false;
+      } else {
+        ChannelDetails ch;
+        if (!findPositionChannel(ch)) return false;
+      }
+    }
     next.enabled = value[0] == '1';
   } else if (strcmp(name, "position_channel") == 0) {
     if (!value[0]) {
@@ -173,6 +207,7 @@ bool MyMesh::setPositionSetting(const char* name, const char* value) {
       strcpy(next.name, value);
       fingerprint(selected, next.fingerprint);
       capturePositionScope(next);
+      next.destinationType = POSITION_DEST_CHANNEL;
     }
   } else {
     return false; // position_status is read-only
@@ -193,10 +228,12 @@ void MyMesh::finishButtonPosition(const char* status) {
 
 void MyMesh::requestButtonPosition() {
   if (!_position.config.enabled || _position.pending || _position.coolingDown(millis())) return;
-  ChannelDetails ch;
-  if (!findPositionChannel(ch)) {
-    _position.status = "channel_missing";
-    return;
+  if (_position.config.destinationType == POSITION_DEST_ROOM) {
+    ContactInfo room;
+    if (!findPositionRoom(room)) { _position.status = "room_missing"; return; }
+  } else {
+    ChannelDetails ch;
+    if (!findPositionChannel(ch)) { _position.status = "channel_missing"; return; }
   }
   _position.pending = true;
   _position.status = "waiting";
@@ -205,8 +242,14 @@ void MyMesh::requestButtonPosition() {
 void MyMesh::loopButtonPosition() {
   if (!_position.pending) return;
   if (_cli_rescue) { finishButtonPosition("cancelled"); return; }
+  const bool toRoom = _position.config.destinationType == POSITION_DEST_ROOM;
   ChannelDetails ch;
-  if (!findPositionChannel(ch)) { finishButtonPosition("channel_missing"); return; }
+  ContactInfo room;
+  if (toRoom) {
+    if (!findPositionRoom(room)) { finishButtonPosition("room_missing"); return; }
+  } else if (!findPositionChannel(ch)) {
+    finishButtonPosition("channel_missing"); return;
+  }
   char text[64];
   if (!PositionButtonState::formatStored(text, sizeof(text), sensors.node_lat, sensors.node_lon)) {
     finishButtonPosition("no_fix");
@@ -219,8 +262,15 @@ void MyMesh::loopButtonPosition() {
   memcpy(send_scope.key, _position.config.scopeKey, sizeof(send_scope.key));
   send_unscoped = send_scope.isNull(); // do not fall back to a changed default
   // Timestamp the message now, even when the position has not changed.
-  bool sent = sendGroupMessage(getRTCClock()->getCurrentTimeUnique(), ch.channel,
-                               _prefs.node_name, text, strlen(text));
+  bool sent;
+  if (toRoom) {
+    uint32_t expectedAck = 0, estTimeout = 0;
+    sent = sendMessage(room, getRTCClock()->getCurrentTimeUnique(), 0, text,
+                       expectedAck, estTimeout) != MSG_SEND_FAILED;
+  } else {
+    sent = sendGroupMessage(getRTCClock()->getCurrentTimeUnique(), ch.channel,
+                            _prefs.node_name, text, strlen(text));
+  }
   send_scope = previousScope;
   send_unscoped = previousUnscoped;
   if (sent) {

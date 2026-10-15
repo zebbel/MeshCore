@@ -4,15 +4,21 @@
 #include <stdio.h>
 #include <string.h>
 
-// Byte-only, versioned disk record. Channel key fingerprint plus transport scope.
+enum PositionDestination : uint8_t {
+  POSITION_DEST_CHANNEL = 0,
+  POSITION_DEST_ROOM = 1
+};
+
+// Byte-only, versioned disk record. Channel fingerprint or room public key, plus scope.
 struct PositionButtonConfig {
-  char magic[4] = {'P', 'B', '0', '2'};
+  char magic[4] = {'P', 'B', '0', '3'};
   uint8_t enabled = 0;
   char name[32] = {};
   uint8_t fingerprint[32] = {};
   uint8_t scopeKey[16] = {}; // captured effective scope; zero means explicitly unscoped
+  uint8_t destinationType = POSITION_DEST_CHANNEL;
 };
-static_assert(sizeof(PositionButtonConfig) == 85, "Position settings disk layout");
+static_assert(sizeof(PositionButtonConfig) == 86, "Position settings disk layout");
 
 struct PositionButtonState {
   PositionButtonConfig config;

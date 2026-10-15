@@ -1115,6 +1115,25 @@ void MyMesh::handleCmdFrame(size_t len) {
         result = sendCommandData(*recipient, msg_timestamp, attempt, text, est_timeout);
         expected_ack = 0; // no Ack expected
       } else {
+#ifdef ENABLE_POSITION_BUTTON
+        // A room server is a *contact*, not a group channel. Intercept only
+        // locally-originated plain messages to advertised room-server contacts.
+        // Radio-received posts and ordinary DMs must never configure the button.
+        if (recipient->type == ADV_TYPE_ROOM) {
+          int command = handlePositionButtonCommand(0, text, tlen, recipient);
+          if (command != 0) {
+            if (command < 0) {
+              writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+            } else {
+              // CMD_SEND_TXT_MSG expects SENT (not OK), even for a local command.
+              memset(out_frame, 0, 10);
+              out_frame[0] = RESP_CODE_SENT;
+              _serial->writeFrame(out_frame, 10);
+            }
+            return; // a configuration command is never sent over LoRa
+          }
+        }
+#endif
         result = sendMessage(*recipient, msg_timestamp, attempt, text, expected_ack, est_timeout);
       }
       // TODO: add expected ACK to table
@@ -1839,7 +1858,8 @@ void MyMesh::handleCmdFrame(size_t len) {
                        "%s:%s", name, value);
     };
 #ifdef ENABLE_POSITION_BUTTON
-    appendVar("position_channel", _position.config.name);
+    appendVar("position_channel", _position.config.destinationType == POSITION_DEST_CHANNEL ? _position.config.name : "");
+    appendVar("position_room", _position.config.destinationType == POSITION_DEST_ROOM ? _position.config.name : "");
     appendVar("position_button", _position.config.enabled ? "1" : "0");
     appendVar("position_status", _position.status);
 #endif
