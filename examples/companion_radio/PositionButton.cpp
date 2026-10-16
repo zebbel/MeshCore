@@ -169,7 +169,7 @@ int MyMesh::handlePositionButtonCommand(uint8_t channel_idx, const char* text, s
   }
   finishButtonPosition(next.enabled ? "idle" : "disabled");
   _position.config = next;
-  if (_ui) _ui->notify(UIEventType::ack);
+  if (_listener) _listener->onLocalSendQueued();
   return 1;
 }
 
@@ -276,7 +276,7 @@ void MyMesh::loopButtonPosition() {
   if (sent) {
     _position.hasSent = true;
     _position.lastSent = millis();
-    if (_ui) _ui->notify(UIEventType::ack); // queued locally, not a delivery receipt
+    if (_listener) _listener->onLocalSendQueued(); // queued locally, not a delivery receipt
   }
   finishButtonPosition(sent ? "queued" : "send_failed");
 }

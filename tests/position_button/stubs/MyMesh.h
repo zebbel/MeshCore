@@ -65,7 +65,7 @@ struct FakeSensors {
 };
 extern FakeSensors sensors;
 enum class UIEventType { ack };
-struct FakeUI { int acks = 0; void notify(UIEventType) { ++acks; } };
+struct FakeUI { int acks = 0; void onLocalSendQueued() { ++acks; } };
 struct TransportKey {
   uint8_t key[16] = {};
   bool isNull() const { uint8_t zero[16] = {}; return memcmp(key, zero, 16) == 0; }
@@ -75,7 +75,7 @@ public:
   bool _statusLedEnabled = true;
   PositionButtonState _position;
   DataStore* _store;
-  FakeUI* _ui = nullptr;
+  FakeUI* _listener = nullptr;
   bool _cli_rescue = false, sendOK = true;
   struct { char node_name[32] = "test"; uint8_t default_scope_key[16] = {}; } _prefs;
   TransportKey send_scope;

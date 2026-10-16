@@ -5,7 +5,7 @@ FakeSensors sensors;
 int main() {
   DataStore store;
   MyMesh m(store);
-  FakeUI feedback; m._ui = &feedback;
+  FakeUI feedback; m._listener = &feedback;
   strcpy(m.channels[1].name, "Family"); m.channels[1].channel.secret[0] = 42;
   strcpy(m.channels[2].name, "Other"); m.channels[2].channel.secret[0] = 77;
   assert(!m.setPositionSetting("position_button", "1"));
