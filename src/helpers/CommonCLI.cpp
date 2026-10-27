@@ -1,4 +1,8 @@
 #include <Arduino.h>
+#ifdef HELTEC_T114
+#include <T114Board.h>
+extern T114Board board;
+#endif
 #include "CommonCLI.h"
 #include "TxtDataHelpers.h"
 #include "AdvertDataHelpers.h"
@@ -181,6 +185,26 @@ uint8_t CommonCLI::buildAdvertData(uint8_t node_type, uint8_t* app_data) {
 }
 
 void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
+#ifdef HELTEC_T114
+    if (strcmp(command, "?") == 0) {
+      strcpy(reply, "set led on/off: TX LED; get led: setting");
+      return;
+    }
+    if (strcmp(command, "get led") == 0) {
+      sprintf(reply, "> %s", _prefs->tx_led_enabled ? "on" : "off");
+      return;
+    }
+    if (strncmp(command, "set led ", 8) == 0) {
+      const char* value = command + 8;
+      if (strcmp(value, "on") && strcmp(value, "off")) {
+        strcpy(reply, "Error: use set led on/off"); return;
+      }
+      _prefs->tx_led_enabled = strcmp(value, "on") == 0;
+      board.setTxLedEnabled(_prefs->tx_led_enabled);
+      savePrefs();
+      strcpy(reply, "OK"); return;
+    }
+#endif
     if (_prefs->getRadioPrefs()->handleCommand(command, sender_timestamp, reply)) {   // is a radio CLI command?
       if (_prefs->getRadioPrefs()->isDirty()) { savePrefs(); }
       return;

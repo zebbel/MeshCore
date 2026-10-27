@@ -947,6 +947,9 @@ void MyMesh::begin(FILESYSTEM *fs) {
   _fs = fs;
   // load persisted prefs
   _cli.loadPrefs(_fs);
+#ifdef HELTEC_T114
+  board.setTxLedEnabled(_prefs.tx_led_enabled != 0);
+#endif
   acl.load(_fs, self_id);
   // TODO: key_store.begin();
   region_map.load(_fs);

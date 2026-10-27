@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build both custom companions into MeshCore/release: bash build-station.sh
+# Build all three custom firmwares into MeshCore/release: bash build-station.sh
 set -euo pipefail
 
 repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -85,12 +85,15 @@ exec 9<"$repo_dir"
 flock -n 9 || { printf 'Another Station build is running here.\n' >&2; exit 1; }
 
 heltec=heltec_v4_companion_radio_usb
+t114=Heltec_t114_repeater
+t114_name="$t114-$suffix"
 t1000=t1000e_companion_radio_ble_position
 heltec_name="$heltec-$suffix"
 merged_name="$heltec-$version-$commit_hash-merged-meshcoreStation-$station_version"
 t1000_name="t1000e_companion_radio_ble-$suffix"
 outputs=("$heltec_name.bin" "$heltec_name.json" "$merged_name.bin"
-         "$t1000_name.uf2" "$t1000_name.zip" "$t1000_name.uf2.sha256" "$t1000_name.zip.sha256")
+         "$t1000_name.uf2" "$t1000_name.zip" "$t1000_name.uf2.sha256" "$t1000_name.zip.sha256"
+         "$t114_name.uf2" "$t114_name.zip" "$t114_name.uf2.sha256" "$t114_name.zip.sha256")
 # Start each build with a completely empty release directory.
 rm -rf -- "$output_dir"
 mkdir -p -- "$output_dir"
@@ -117,12 +120,18 @@ printf 'Building T1000-E BLE position companion\n'
 python3 "$repo_dir/bin/uf2conv/uf2conv.py" -f 0xADA52840 -c \
   "$repo_dir/.pio/build/$t1000/firmware.hex" -o "$staging/$t1000.uf2"
 cp -- "$repo_dir/.pio/build/$t1000/firmware.zip" "$staging/$t1000.zip"
+printf 'Building Heltec T114 display repeater\n'
+"$pio_cmd" run -e "$t114" -t clean
+"$pio_cmd" run -e "$t114"
+python3 "$repo_dir/bin/uf2conv/uf2conv.py" -f 0xADA52840 -c \
+  "$repo_dir/.pio/build/$t114/firmware.hex" -o "$staging/$t114.uf2"
+cp -- "$repo_dir/.pio/build/$t114/firmware.zip" "$staging/$t114.zip"
 python3 "$repo_dir/scripts/verify-station-build.py" "$staging" "$version" "$commit_hash" "$station_version"
 
 for file in "${outputs[@]}"; do mv -- "$staging/$file" "$output_dir/$file"; done
-printf '\nBoth builds complete. Release files:\n'
+printf '\nAll three builds complete. Release files:\n'
 for file in "${outputs[@]}"; do printf '%s\n' "$output_dir/$file"; done
-printf '\nHeltec: .bin + .json for meshcoreStation. T1000-E: .uf2 or DFU .zip. Merged Heltec image is for full flashing.\n'
+printf '\nHeltec: .bin + .json for meshcoreStation. T1000-E and T114: .uf2 or DFU .zip. Merged Heltec image is for full flashing.\n'
 
 if $publish_release; then
   assets=()

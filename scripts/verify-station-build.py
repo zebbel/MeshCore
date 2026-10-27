@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate both staged deliverables before the build wrapper exposes them."""
+"""Validate all three staged deliverables before the build wrapper exposes them."""
 import hashlib
 import json
 import pathlib
@@ -24,7 +24,12 @@ def verify(folder):
             or manifest.get('sha256') != hashlib.sha256(image).hexdigest()
             or not image or image[0] != 0xE9 or len(image) > 0x140000):
         raise ValueError('Heltec release verification failed')
-    uf2_name = t1000 + '.uf2'
+    verify_nordic(folder, t1000, 0x27000, 0xD4000)
+    verify_nordic(folder, 'Heltec_t114_repeater', 0x26000, 0xED000)
+
+
+def verify_nordic(folder, target, start, limit):
+    uf2_name = target + '.uf2'
     data = (folder / uf2_name).read_bytes()
     if not data or len(data) % 512:
         raise ValueError('Invalid UF2 length')
@@ -37,12 +42,12 @@ def verify(folder):
         if ((m0, m1, end) != (0x0A324655, 0x9E5D5157, 0x0AB16F30)
                 or flags != 0x2000 or family != 0xADA52840
                 or size != 256 or number != i or total != blocks
-                or addr % 256 or not 0x27000 <= addr < 0xD4000
+                or addr % 256 or not (start <= addr and addr + size <= limit)
                 or addr in addresses):
-            raise ValueError('UF2 is not a valid T1000-E application image')
+            raise ValueError(f'UF2 is not a valid {target} application image')
         addresses.add(addr)
-    if min(addresses) != 0x27000:
-        raise ValueError('UF2 application start does not match T1000-E linker layout')
+    if min(addresses) != start:
+        raise ValueError(f'UF2 start does not match {target} linker layout')
     (folder / (uf2_name + '.sha256')).write_text(
         hashlib.sha256(data).hexdigest() + '  ' + uf2_name + '\n')
 
@@ -85,6 +90,21 @@ def name_release(folder, version, commit, station_version):
     (folder / (t1000 + '.uf2.sha256')).unlink()
     for ext in ('.uf2', '.zip'):
         name = tname + ext
+        (folder / (name + '.sha256')).write_text(
+            hashlib.sha256((folder / name).read_bytes()).hexdigest() + '  ' + name + '\n')
+
+    target = 'Heltec_t114_repeater'
+    with zipfile.ZipFile(folder / (target + '.zip')) as archive:
+        if archive.testzip() is not None:
+            raise ValueError('Invalid T114 DFU archive')
+        app = json.loads(archive.read('manifest.json'))['manifest']['application']
+        for key in ('bin_file', 'dat_file'):
+            if not archive.read(app[key]):
+                raise ValueError('Empty T114 DFU payload')
+    (folder / (target + '.uf2.sha256')).unlink()
+    for ext in ('.uf2', '.zip'):
+        name = f'{target}-{version}-{commit}-meshcoreStation-{station_version}' + ext
+        (folder / (target + ext)).rename(folder / name)
         (folder / (name + '.sha256')).write_text(
             hashlib.sha256((folder / name).read_bytes()).hexdigest() + '  ' + name + '\n')
 

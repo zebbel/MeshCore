@@ -2187,6 +2187,10 @@ bool MyMesh::handleCommand(const char* command, uint32_t sender_timestamp, char*
     command += 3;
   }
 
+#ifdef ENABLE_POSITION_BUTTON
+  if (handleCustomCLI(command, reply)) return true;
+#endif
+
   if (_prefs.getRadioPrefs()->handleCommand(command, sender_timestamp, reply)) {  // is radio CLI command?
     if (_prefs.getRadioPrefs()->isDirty()) { savePrefs(); }
     return true;

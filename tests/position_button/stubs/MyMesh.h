@@ -90,6 +90,7 @@ public:
   int sent = 0; std::string lastText; uint8_t lastKey = 0;
   explicit MyMesh(DataStore& store): _store(&store) {}
   bool getChannel(int i, ChannelDetails& ch) { if (i < 0 || i >= 40) return false; ch = channels[i]; return true; }
+  bool getContactByIdx(int idx, ContactInfo& c) { if (!hasRoom || idx != 0) return false; c = roomContact; return true; }
   ContactInfo* lookupContactByPubKey(const uint8_t* pub_key, int len) {
     return hasRoom && memcmp(roomContact.id.pub_key, pub_key, len) == 0 ? &roomContact : nullptr;
   }
@@ -113,6 +114,7 @@ public:
   void loadPositionSettings();
   void capturePositionScope(PositionButtonConfig&);
   bool savePositionSettings(const PositionButtonConfig&);
+  bool handleCustomCLI(const char*, char*);
   bool setPositionSetting(const char*, const char*);
   void finishButtonPosition(const char*);
   bool isStatusLedEnabled() const { return _statusLedEnabled; }

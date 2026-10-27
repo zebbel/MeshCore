@@ -1,5 +1,6 @@
 """Exercise release ordering and failure handling without contacting GitHub."""
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import tempfile
@@ -12,10 +13,17 @@ with tempfile.TemporaryDirectory() as tmp:
     m.ROOT = Path(tmp)
     (m.ROOT / 'release').mkdir()
     assets = []
-    for i in range(7):
-        p = m.ROOT / 'release' / f'asset{i}-meshcoreStation-v1.0.0.bin'
+    names = ['heltec_v4_companion_radio_usb-test-meshcoreStation-v1.0.0' + ext for ext in ('.bin', '.json', '.merged.bin')]
+    for target in ('t1000e_companion_radio_ble', 'Heltec_t114_repeater'):
+        names += [target + '-test-meshcoreStation-v1.0.0' + ext for ext in ('.uf2', '.zip', '.uf2.sha256', '.zip.sha256')]
+    for name in names:
+        p = m.ROOT / 'release' / name
         p.write_bytes(b'firmware')
         assets.append(str(p))
+    for name in names:
+        if name.endswith('.sha256'):
+            payload = name[:-7]
+            (m.ROOT / 'release' / name).write_text(hashlib.sha256(b'firmware').hexdigest() + '  ' + payload + '\n')
     calls = []
     mode = 'ok'
     def fake(*args):
@@ -47,4 +55,14 @@ with tempfile.TemporaryDirectory() as tmp:
         except RuntimeError:
             pass
         assert not any(c[:3] == ('gh', 'release', 'edit') for c in calls), mode
+    mode = 'ok'
+    checksum = next(Path(p) for p in assets if p.endswith('.sha256'))
+    checksum.write_text('invalid')
+    calls.clear()
+    try:
+        m.publish(sha, 'v1.0.0', assets)
+        raise AssertionError('invalid checksum accepted')
+    except ValueError:
+        pass
+    assert not any(c[:3] == ('gh', 'release', 'create') for c in calls)
 print('Release preflight, draft upload, verification and failure tests passed.')

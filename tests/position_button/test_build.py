@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix='dual build ') as directory:
 import os, pathlib, shutil, sys, zipfile, json
 args = sys.argv
 name = args[args.index('-e') + 1]
-if os.environ.get('FAIL_T1000') and name.startswith('t1000'):
+if (os.environ.get('FAIL_T1000') and name.startswith('t1000')) or (os.environ.get('FAIL_T114') and name.startswith('Heltec')):
     sys.exit(7)
 build = pathlib.Path('.pio/build') / name
 if 'clean' in args:
@@ -60,7 +60,7 @@ else:
         archive.writestr('application.bin', bytes(range(16)))
         archive.writestr('application.dat', b'dfu metadata')
         archive.writestr('manifest.json', json.dumps({'manifest': {'application': {'bin_file': 'application.bin', 'dat_file': 'application.dat'}}}))
-    (build / 'firmware.hex').write_text(':020000040002F8\\n:10700000000102030405060708090A0B0C0D0E0F08\\n:00000001FF\\n')
+    (build / 'firmware.hex').write_text((':020000040002F8\\n:10700000000102030405060708090A0B0C0D0E0F08\\n:00000001FF\\n').replace('7000', '6000').replace('0F08', '0F18') if name.startswith('Heltec') else ':020000040002F8\\n:10700000000102030405060708090A0B0C0D0E0F08\\n:00000001FF\\n')
 ''')
     compiler.chmod(0o755)
     env = dict(os.environ, STATION_PIO=str(compiler), FIRMWARE_VERSION='v1.17.1')
@@ -75,6 +75,8 @@ else:
     tname = f't1000e_companion_radio_ble-v1.17.1-{commit}-meshcoreStation-v1.0.0'
     outputs = [hname + '.bin', hname + '.json', mname + '.bin', tname + '.uf2',
                tname + '.zip', tname + '.uf2.sha256', tname + '.zip.sha256']
+    rname = f'Heltec_t114_repeater-v1.17.1-{commit}-meshcoreStation-v1.0.0'
+    outputs += [rname + ext for ext in ('.uf2', '.zip', '.uf2.sha256', '.zip.sha256')]
     assert sorted(p.name for p in release.iterdir()) == sorted(outputs)
     manifest = json.loads((release / (hname + '.json')).read_text())
     assert manifest['image'] == hname + '.bin'
@@ -97,4 +99,7 @@ else:
     assert result.returncode != 0
     assert not any((release / name).exists() for name in outputs)
     assert list(release.iterdir()) == []
+    result = subprocess.run(['bash', str(repo / 'build-station.sh')],
+                            env=dict(env, FAIL_T114='1'), capture_output=True)
+    assert result.returncode != 0 and list(release.iterdir()) == []
 print('Root build wrapper, upstream naming, manifests, checksums and failure cleanup passed.')

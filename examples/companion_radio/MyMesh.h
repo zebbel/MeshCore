@@ -263,6 +263,7 @@ private:
   void loadPositionSettings();
   void capturePositionScope(PositionButtonConfig&);
   bool savePositionSettings(const PositionButtonConfig& config);
+  bool handleCustomCLI(const char*, char*);
   bool setPositionSetting(const char* name, const char* value);
   bool findPositionChannel(ChannelDetails& channel);
   bool findPositionRoom(ContactInfo& room);

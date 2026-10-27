@@ -203,10 +203,16 @@ private:
   };
   RoomPrefs room;
 
+#ifdef HELTEC_T114
+  uint8_t tx_led_enabled = 1;
+#endif
   DynamicConfigSerializer custom;
 
 protected:
   void structure() override {
+#ifdef HELTEC_T114
+    def("tx_led", tx_led_enabled);
+#endif
     def("name", node_name, sizeof(node_name));
     def("pass", password, sizeof(password));
     def("guest", guest_password, sizeof(guest_password));

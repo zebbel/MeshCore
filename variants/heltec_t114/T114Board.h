@@ -16,12 +16,19 @@ protected:
 #endif
 
 public:
+  bool txLedEnabled = true;
+  void setTxLedEnabled(bool enabled) {
+    txLedEnabled = enabled;
+#ifdef P_LORA_TX_LED
+    if (!enabled) digitalWrite(P_LORA_TX_LED, HIGH);
+#endif
+  }
   T114Board() : NRF52Board("T114_OTA") {}
   void begin();
 
 #if defined(P_LORA_TX_LED)
   void onBeforeTransmit() override {
-    digitalWrite(P_LORA_TX_LED, LOW);   // turn TX LED on
+    digitalWrite(P_LORA_TX_LED, txLedEnabled ? LOW : HIGH);   // turn TX LED on
   }
   void onAfterTransmit() override {
     digitalWrite(P_LORA_TX_LED, HIGH);   // turn TX LED off
