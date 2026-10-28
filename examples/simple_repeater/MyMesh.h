@@ -201,6 +201,11 @@ public:
   void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) override;
   bool formatFileSystem() override;
   void sendSelfAdvertisement(int delay_millis, bool flood) override;
+#ifdef HELTEC_T114_WITH_DISPLAY
+  uint64_t getUIUptimeMinutes() const { return uptime_millis / 60000; }
+  int getUINeighbours(NeighbourInfo* out, int capacity) const;
+#endif
+
   void updateAdvertTimer() override;
   void updateFloodAdvertTimer() override;
 

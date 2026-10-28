@@ -1,5 +1,9 @@
 #include "UITask.h"
 #include "target.h"
+#ifdef HELTEC_T114_WITH_DISPLAY
+#include "MyMesh.h"
+extern MyMesh the_mesh;
+#endif
 #include <Arduino.h>
 #include <helpers/CommonCLI.h>
 
@@ -92,6 +96,42 @@ void UITask::renderCurrScreen() {
     _display->setCursor((_display->width() - poffWidth) / 2, 48);
     _display->drawTextCentered(_display->width()/2, 48, poweroff_string);
   } else {
+#ifdef HELTEC_T114_WITH_DISPLAY
+    _display->setTextSize(1);
+    _display->setColor(UIColor::primary_txt);
+    _display->setCursor(0, 0);
+    if (_screen == 1) {
+      _display->print("Battery & uptime");
+      _display->setCursor(0, 20);
+      snprintf(tmp, sizeof(tmp), "%.3f V", _board->getBattMilliVolts() / 1000.0);
+      _display->print(tmp);
+      uint64_t minutes = the_mesh.getUIUptimeMinutes();
+      _display->setCursor(0, 40);
+      snprintf(tmp, sizeof(tmp), "%lu d %02lu h %02lu m",
+               (unsigned long)(minutes / 1440), (unsigned long)(minutes / 60 % 24),
+               (unsigned long)(minutes % 60));
+      _display->print(tmp);
+      return;
+    }
+    if (_screen == 2) {
+      NeighbourInfo rows[5];
+      int capacity = (_display->height() - 14) / 10;
+      if (capacity > 5) capacity = 5;
+      int count = the_mesh.getUINeighbours(rows, capacity);
+      snprintf(tmp, sizeof(tmp), "Neighbors: %d", count);
+      _display->print(tmp);
+      if (!count) {
+        _display->setCursor(0, 20); _display->print("None heard yet");
+      }
+      for (int i = 0; i < count && i < capacity; ++i) {
+        const auto* key = rows[i].id.pub_key;
+        snprintf(tmp, sizeof(tmp), "%02X%02X%02X%02X %+.2f",
+                 key[0], key[1], key[2], key[3], rows[i].snr / 4.0);
+        _display->setCursor(0, 14 + i * 10); _display->print(tmp);
+      }
+      return;
+    }
+#endif
     _display->setCursor(0, 0);
     _display->setTextSize(1);
     _display->setColor(UIColor::primary_txt);
@@ -106,22 +146,42 @@ void UITask::renderCurrScreen() {
     _display->setCursor(0, 30);
     sprintf(tmp, "BW: %03.2f CR: %d", _node_prefs->bw, _node_prefs->cr);
     _display->print(tmp);
+#ifdef HELTEC_T114_WITH_DISPLAY
+    _display->setCursor(0, 40);
+    snprintf(tmp, sizeof(tmp), "TX: %d dBm", _node_prefs->tx_power_dbm);
+    _display->print(tmp);
+#endif
   }
 }
 
 void UITask::loop() {
 #if defined(PIN_USER_BTN) && defined(DISPLAY_CLASS)
   int ev = user_btn.check();
+#ifdef HELTEC_T114_WITH_DISPLAY
+  if (ev) _auto_off = millis() + AUTO_OFF_MILLIS;
+#endif
   if (ev == BUTTON_EVENT_CLICK) {
     if (_display->isOn()) {
-      // TODO: any action ?
+#ifdef HELTEC_T114_WITH_DISPLAY
+      _screen = (_screen + 1) % 3;
+#endif
     } else {
       _display->turnOn();
     }
     _auto_off = millis() + AUTO_OFF_MILLIS;   // extend auto-off timer
+#ifdef HELTEC_T114_WITH_DISPLAY
+    _next_refresh = 0;
+  } else if (ev == BUTTON_EVENT_DOUBLE_CLICK) {
+    the_mesh.sendSelfAdvertisement(1500, true);
+    _auto_off = millis() + AUTO_OFF_MILLIS;
+    _next_refresh = 0;
+#endif
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {
       _display->turnOn();
       Serial.println("Powering Off");
+#ifdef HELTEC_T114_WITH_DISPLAY
+      _auto_off = millis() + AUTO_OFF_MILLIS;
+#endif
       _powering_off_at = millis() + POWEROFF_DELAY; 
   }
 #endif
@@ -142,7 +202,9 @@ void UITask::loop() {
   if (_powering_off_at > 0) { // power off timer armed
 #if defined(LED_PIN) && defined(LED_STATE_ON)
     digitalWrite(LED_PIN, LED_STATE_ON); // switch on the led until poweroff
+#ifndef HELTEC_T114_WITH_DISPLAY
     delay(1000);
+#endif
     digitalWrite(LED_PIN, !LED_STATE_ON); // off LED
 #endif
     if (millis() > _powering_off_at) {

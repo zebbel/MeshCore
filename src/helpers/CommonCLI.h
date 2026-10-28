@@ -31,6 +31,9 @@ public:
   char password[16];
   float freq = 0;
   int8_t tx_power_dbm = 0;
+#ifdef HELTEC_T114
+  uint8_t tx_led_enabled = 1;
+#endif
   uint8_t disable_fwd = 0;
   uint8_t advert_interval = 0;       // minutes / 2
   uint8_t flood_advert_interval = 0; // hours
@@ -203,9 +206,6 @@ private:
   };
   RoomPrefs room;
 
-#ifdef HELTEC_T114
-  uint8_t tx_led_enabled = 1;
-#endif
   DynamicConfigSerializer custom;
 
 protected:

@@ -1341,3 +1341,22 @@ bool MyMesh::hasPendingWork() const {
 #endif
   return _mgr->getOutboundTotal() > 0;
 }
+
+#ifdef HELTEC_T114_WITH_DISPLAY
+int MyMesh::getUINeighbours(NeighbourInfo* out, int capacity) const {
+  int count = 0, copied = 0;
+#if MAX_NEIGHBOURS
+  for (int i = 0; i < MAX_NEIGHBOURS; ++i) {
+    if (!neighbours[i].heard_timestamp) continue;
+    ++count;
+    int pos = 0;
+    while (pos < copied && out[pos].heard_timestamp >= neighbours[i].heard_timestamp) ++pos;
+    if (pos >= capacity) continue;
+    if (copied < capacity) ++copied;
+    for (int j = copied - 1; j > pos; --j) out[j] = out[j - 1];
+    out[pos] = neighbours[i];
+  }
+#endif
+  return count;
+}
+#endif

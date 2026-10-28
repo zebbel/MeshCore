@@ -8,6 +8,9 @@ class UITask {
   DisplayDriver* _display;
   unsigned long _next_read, _next_refresh, _auto_off;
   int _prevBtnState;
+#ifdef HELTEC_T114_WITH_DISPLAY
+  uint8_t _screen = 0;
+#endif
   NodePrefs* _node_prefs;
   char _version_info[32];
   unsigned long _powering_off_at = 0;
