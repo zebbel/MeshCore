@@ -2,6 +2,9 @@
 
 #include <MeshCore.h>
 #include <Arduino.h>
+#ifdef T114_BUTTON_RGB
+#include "T114AdvertPixels.h"
+#endif
 #include <helpers/NRF52Board.h>
 
 // built-ins
@@ -15,7 +18,14 @@ protected:
   void initiateShutdown(uint8_t reason) override;
 #endif
 
+#ifdef T114_BUTTON_RGB
+  T114AdvertPixels _advertPixels;
+#endif
 public:
+#ifdef T114_BUTTON_RGB
+  void flashButtonAdvert(bool fresh) { _advertPixels.flash(fresh); }
+  void loopAdvertFeedback() { _advertPixels.loop(); }
+#endif
   bool txLedEnabled = true;
   void setTxLedEnabled(bool enabled) {
     txLedEnabled = enabled;

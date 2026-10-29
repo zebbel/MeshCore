@@ -196,6 +196,9 @@ void loop() {
 #endif
 
   the_mesh.loop();
+#ifdef T114_BUTTON_RGB
+  board.loopAdvertFeedback();
+#endif
   sensors.loop();
 #ifdef DISPLAY_CLASS
   ui_task.loop();

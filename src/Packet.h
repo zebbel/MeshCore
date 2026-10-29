@@ -42,6 +42,9 @@ namespace mesh {
 class Packet {
 public:
   Packet();
+#ifdef T114_BUTTON_RGB
+  bool button_advert = false; // local metadata, never encoded on the wire
+#endif
 
   uint8_t header;
   uint16_t payload_len, path_len;

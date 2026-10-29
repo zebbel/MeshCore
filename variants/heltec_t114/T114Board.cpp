@@ -34,6 +34,9 @@ void T114Board::initiateShutdown(uint8_t reason) {
 
 void T114Board::begin() {
   NRF52BoardDCDC::begin();
+#ifdef T114_BUTTON_RGB
+  _advertPixels.begin();
+#endif
 
   pinMode(PIN_VBAT_READ, INPUT);
 

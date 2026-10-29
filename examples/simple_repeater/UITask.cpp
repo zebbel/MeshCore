@@ -209,7 +209,11 @@ void UITask::loop() {
 #ifdef HELTEC_T114_WITH_DISPLAY
     _next_refresh = 0;
   } else if (ev == BUTTON_EVENT_DOUBLE_CLICK) {
+#ifdef T114_BUTTON_RGB
+    the_mesh.sendButtonAdvertisement();
+#else
     the_mesh.sendSelfAdvertisement(1500, true);
+#endif
     _auto_off = millis() + AUTO_OFF_MILLIS;
     _next_refresh = 0;
 #endif

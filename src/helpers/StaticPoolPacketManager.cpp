@@ -76,7 +76,11 @@ StaticPoolPacketManager::StaticPoolPacketManager(int pool_size): unused(pool_siz
 }
 
 mesh::Packet* StaticPoolPacketManager::allocNew() {
-  return unused.removeByIdx(0);  // just get first one (returns NULL if empty)
+  auto* packet = unused.removeByIdx(0);
+#ifdef T114_BUTTON_RGB
+  if (packet) packet->button_advert = false;
+#endif
+  return packet;
 }
 
 void StaticPoolPacketManager::free(mesh::Packet* packet) {

@@ -503,6 +503,17 @@ void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
 }
 
 void MyMesh::logTx(mesh::Packet *pkt, int len) {
+#ifdef T114_BUTTON_RGB
+  if (pkt->button_advert) {
+    pkt->button_advert = false;
+    bool fresh = false;
+#if ENV_INCLUDE_GPS
+    auto* gps = sensors.getLocationProvider();
+    fresh = gps && gps->hasFreshFix(5000);
+#endif
+    board.flashButtonAdvert(fresh);
+  }
+#endif
 #ifdef WITH_BRIDGE
   if (_prefs.bridge_pkt_src == 0) {
     bridge.sendPacket(pkt);
@@ -528,6 +539,9 @@ void MyMesh::logTx(mesh::Packet *pkt, int len) {
 }
 
 void MyMesh::logTxFail(mesh::Packet *pkt, int len) {
+#ifdef T114_BUTTON_RGB
+  pkt->button_advert = false;
+#endif
   if (_logging) {
     File f = openAppend(PACKET_LOG_FILE);
     if (f) {
@@ -1036,6 +1050,9 @@ bool MyMesh::formatFileSystem() {
 void MyMesh::sendSelfAdvertisement(int delay_millis, bool flood) {
   mesh::Packet *pkt = createSelfAdvert();
   if (pkt) {
+#ifdef T114_BUTTON_RGB
+    pkt->button_advert = _button_advert_request;
+#endif
     if (flood) {
       sendFloodScoped(default_scope, pkt, delay_millis, _prefs.path_hash_mode + 1);
     } else {

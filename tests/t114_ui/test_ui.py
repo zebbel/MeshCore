@@ -69,6 +69,7 @@ extern Sensors sensors;
 struct NeighbourInfo { struct {uint8_t pub_key[32]={1,2,3,4};} id; uint32_t heard_timestamp=0; int8_t snr=8; };
 struct MyMesh {
  int adverts=0, count=0;
+ void sendButtonAdvertisement(){sendSelfAdvertisement(1500,true);}
  void sendSelfAdvertisement(int delay,bool flood){if(delay==1500 && flood) ++adverts;}
  uint64_t getUIUptimeMinutes(){return 1501;}
  int getUINeighbours(NeighbourInfo* out,int n){for(int i=0;i<count && i<n;++i)out[i]=NeighbourInfo();return count;}
@@ -102,7 +103,7 @@ int main(){
  user_btn.event=2;ui.loop();now+=3001;ui.loop();assert(board.off==1);
 }
 """)
-    subprocess.run(['g++','-std=c++11','-Wall','-Wextra','-Wno-unused-variable','-DHELTEC_T114_WITH_DISPLAY','-DENV_INCLUDE_GPS=1','-I'+tmp,str(d/'UITask.cpp'),str(d/'test.cpp'),'-o',str(d/'test')],check=True)
+    subprocess.run(['g++','-std=c++11','-Wall','-Wextra','-Wno-unused-variable','-DT114_BUTTON_RGB','-DHELTEC_T114_WITH_DISPLAY','-DENV_INCLUDE_GPS=1','-I'+tmp,str(d/'UITask.cpp'),str(d/'test.cpp'),'-o',str(d/'test')],check=True)
     subprocess.run([str(d/'test')],check=True)
     subprocess.run(['g++','-std=c++11','-I'+tmp,'-c',str(d/'UITask.cpp'),'-o',str(d/'generic.o')],check=True)
     subprocess.run(['g++','-std=c++11','-DHELTEC_T114_WITH_DISPLAY','-I'+tmp,'-c',str(d/'UITask.cpp'),'-o',str(d/'no-gps.o')],check=True)
