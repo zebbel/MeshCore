@@ -101,6 +101,43 @@ void UITask::renderCurrScreen() {
     _display->setColor(UIColor::primary_txt);
     _display->setCursor(0, 0);
     if (_screen == 1) {
+      _display->print("GPS Information");
+      const char* status = "UNAVAILABLE";
+      long satellites = 0;
+#if ENV_INCLUDE_GPS
+      bool fresh = false;
+      auto* gps = sensors.getLocationProvider();
+      if (gps) {
+        if (!gps->isEnabled()) status = "OFF";
+        else {
+          fresh = gps->hasFreshFix(5000);
+          status = fresh ? "FIX" : "NO FIX";
+          satellites = gps->satellitesCount();
+        }
+      }
+#endif
+      _display->setCursor(0, 10);
+      snprintf(tmp, sizeof(tmp), "Status: %s", status); _display->print(tmp);
+      _display->setCursor(0, 20);
+      snprintf(tmp, sizeof(tmp), "Satellites: %ld", satellites); _display->print(tmp);
+#if ENV_INCLUDE_GPS
+      if (fresh) {
+        _display->setCursor(0, 30);
+        snprintf(tmp, sizeof(tmp), "Lat: %.6f", gps->getLatitude() / 1000000.0); _display->print(tmp);
+        _display->setCursor(0, 40);
+        snprintf(tmp, sizeof(tmp), "Lon: %.6f", gps->getLongitude() / 1000000.0); _display->print(tmp);
+        _display->setCursor(0, 50);
+        snprintf(tmp, sizeof(tmp), "Alt: %.1f m", gps->getAltitude() / 1000.0); _display->print(tmp);
+      } else
+#endif
+      {
+        _display->setCursor(0, 30); _display->print("Lat: --");
+        _display->setCursor(0, 40); _display->print("Lon: --");
+        _display->setCursor(0, 50); _display->print("Alt: --");
+      }
+      return;
+    }
+    if (_screen == 2) {
       _display->print("Battery & uptime");
       _display->setCursor(0, 20);
       snprintf(tmp, sizeof(tmp), "%.3f V", _board->getBattMilliVolts() / 1000.0);
@@ -113,7 +150,7 @@ void UITask::renderCurrScreen() {
       _display->print(tmp);
       return;
     }
-    if (_screen == 2) {
+    if (_screen == 3) {
       NeighbourInfo rows[5];
       int capacity = (_display->height() - 14) / 10;
       if (capacity > 5) capacity = 5;
@@ -163,7 +200,7 @@ void UITask::loop() {
   if (ev == BUTTON_EVENT_CLICK) {
     if (_display->isOn()) {
 #ifdef HELTEC_T114_WITH_DISPLAY
-      _screen = (_screen + 1) % 3;
+      _screen = (_screen + 1) % 4;
 #endif
     } else {
       _display->turnOn();

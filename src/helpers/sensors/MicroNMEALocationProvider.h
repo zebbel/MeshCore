@@ -167,6 +167,9 @@ public :
     }
     long satellitesCount() override { return nmea.getNumSatellites(); }
     bool isValid() override { return nmea.isValid(); }
+    bool hasFreshFix(uint32_t max_age_ms) override {
+        return isEnabled() && isValid() && _fix_seen && ageMs(_last_fix_ms) <= max_age_ms;
+    }
 
     long getTimestamp() override { 
         DateTime dt(nmea.getYear(), nmea.getMonth(),nmea.getDay(),nmea.getHour(),nmea.getMinute(),nmea.getSecond());

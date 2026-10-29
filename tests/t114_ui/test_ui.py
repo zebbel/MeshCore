@@ -54,6 +54,14 @@ struct DisplayDriver {
 #define BUTTON_EVENT_DOUBLE_CLICK 3
 struct Button { int event=0; void begin(){} int check(){int e=event;event=0;return e;} };
 extern Button user_btn;
+struct GPS {
+ bool enabled=true, fresh=true; bool isEnabled(){return enabled;}
+ bool hasFreshFix(uint32_t){return fresh;}
+ long satellitesCount(){return 9;} long getLatitude(){return 49640019;}
+ long getLongitude(){return -8633326;} long getAltitude(){return 115000;}
+};
+struct Sensors { GPS gps; bool available=true; GPS* getLocationProvider(){return available ? &gps : nullptr;} };
+extern Sensors sensors;
 """)
     (d/'MyMesh.h').write_text("""
 #pragma once
@@ -71,13 +79,17 @@ struct MyMesh {
 #include "target.h"
 #include "MyMesh.h"
 #include <cassert>
-unsigned long now=1; SerialType Serial; Button user_btn; MyMesh the_mesh;
+unsigned long now=1; SerialType Serial; Button user_btn; MyMesh the_mesh; Sensors sensors;
 int main(){
  mesh::MainBoard board; DisplayDriver display; NodePrefs prefs;
  UITask ui(board,display); ui.begin(&prefs,"today","v1");
  auto has=[&](const char* value){for(auto& s:display.text)if(s.find(value)!=std::string::npos)return true;return false;};
  ui.loop(); assert(has("meshcore.io"));
  now=5000;ui.loop();assert(has("Test repeater") && has("22 dBm"));
+ user_btn.event=1;ui.loop();assert(has("GPS Information") && has("Status: FIX") && has("49.640019") && has("-8.633326") && has("115.0 m"));
+ sensors.gps.fresh=false;now+=1001;ui.loop();assert(has("NO FIX") && has("Lat: --") && !has("49.640019"));
+ sensors.gps.enabled=false;now+=1001;ui.loop();assert(has("Status: OFF"));
+ sensors.available=false;now+=1001;ui.loop();assert(has("UNAVAILABLE"));
  user_btn.event=1;ui.loop();assert(has("4.123 V") && has("1 d 01 h 01 m"));
  user_btn.event=1;ui.loop();assert(has("None heard"));
  the_mesh.count=8;now+=1001;ui.loop();assert(has("Neighbors: 8") && has("01020304") && display.text.size()==6);
@@ -90,9 +102,10 @@ int main(){
  user_btn.event=2;ui.loop();now+=3001;ui.loop();assert(board.off==1);
 }
 """)
-    subprocess.run(['g++','-std=c++11','-Wall','-Wextra','-Wno-unused-variable','-DHELTEC_T114_WITH_DISPLAY','-I'+tmp,str(d/'UITask.cpp'),str(d/'test.cpp'),'-o',str(d/'test')],check=True)
+    subprocess.run(['g++','-std=c++11','-Wall','-Wextra','-Wno-unused-variable','-DHELTEC_T114_WITH_DISPLAY','-DENV_INCLUDE_GPS=1','-I'+tmp,str(d/'UITask.cpp'),str(d/'test.cpp'),'-o',str(d/'test')],check=True)
     subprocess.run([str(d/'test')],check=True)
     subprocess.run(['g++','-std=c++11','-I'+tmp,'-c',str(d/'UITask.cpp'),'-o',str(d/'generic.o')],check=True)
+    subprocess.run(['g++','-std=c++11','-DHELTEC_T114_WITH_DISPLAY','-I'+tmp,'-c',str(d/'UITask.cpp'),'-o',str(d/'no-gps.o')],check=True)
 print('T114 UI runtime screens, refresh, gestures, timeout and shutdown tests passed.')
 
 # Exercise the actual copy/sort implementation separately from rendering.
