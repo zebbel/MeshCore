@@ -2,6 +2,9 @@
 
 #include <helpers/ui/DisplayDriver.h>
 #include <helpers/CommonCLI.h>
+#ifdef HELTEC_T114_WITH_DISPLAY
+#include "BatteryTrend.h"
+#endif
 
 class UITask {
   mesh::MainBoard* _board;
@@ -10,6 +13,7 @@ class UITask {
   int _prevBtnState;
 #ifdef HELTEC_T114_WITH_DISPLAY
   uint8_t _screen = 0;
+  BatteryTrend _batteryTrend;
 #endif
   NodePrefs* _node_prefs;
   char _version_info[32];

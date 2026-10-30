@@ -184,6 +184,21 @@ void UITask::renderCurrScreen() {
       return;
     }
     if (_screen == 3) {
+      _display->print("Charging & Power");
+      _display->setCursor(0, 10);
+      if (_batteryTrend.milliVolts())
+        snprintf(tmp, sizeof(tmp), "Battery: %.2f V", _batteryTrend.milliVolts() / 1000.0);
+      else snprintf(tmp, sizeof(tmp), "Battery: -- V");
+      _display->print(tmp);
+      _display->setCursor(0, 20);
+      _display->print(_board->isExternalPowered() ? "USB: Connected" : "USB: Disconnected");
+      _display->setCursor(0, 30); _display->print("Solar: Not detectable");
+      _display->setCursor(0, 40);
+      snprintf(tmp, sizeof(tmp), "Trend: %s", _batteryTrend.trend()); _display->print(tmp);
+      _display->setCursor(0, 50); _display->print("Charging: Unknown");
+      return;
+    }
+    if (_screen == 4) {
       NeighbourInfo rows[5];
       int capacity = (_display->height() - 14) / 10;
       if (capacity > 5) capacity = 5;
@@ -225,6 +240,10 @@ void UITask::renderCurrScreen() {
 }
 
 void UITask::loop() {
+#ifdef HELTEC_T114_WITH_DISPLAY
+  if (_batteryTrend.due(millis()))
+    _batteryTrend.sample(millis(), _board->getBattMilliVolts());
+#endif
 #if defined(PIN_USER_BTN) && defined(DISPLAY_CLASS)
   int ev = user_btn.check();
 #ifdef HELTEC_T114_WITH_DISPLAY
@@ -233,7 +252,7 @@ void UITask::loop() {
   if (ev == BUTTON_EVENT_CLICK) {
     if (_display->isOn()) {
 #ifdef HELTEC_T114_WITH_DISPLAY
-      _screen = (_screen + 1) % 4;
+      _screen = (_screen + 1) % 5;
 #endif
     } else {
       _display->turnOn();

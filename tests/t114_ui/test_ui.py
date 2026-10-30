@@ -5,7 +5,7 @@ ROOT = Path(__file__).resolve().parents[2]
 with tempfile.TemporaryDirectory() as tmp:
     d = Path(tmp)
     (d/'helpers/ui').mkdir(parents=True)
-    for name in ('UITask.h','UITask.cpp'):
+    for name in ('UITask.h','UITask.cpp','BatteryTrend.h'):
         (d/name).write_bytes((ROOT/'examples/simple_repeater'/name).read_bytes())
     (d/'Arduino.h').write_text("""
 #pragma once
@@ -24,7 +24,7 @@ extern SerialType Serial;
     (d/'helpers/CommonCLI.h').write_text("""
 #pragma once
 #include <Arduino.h>
-namespace mesh { struct MainBoard { int off=0; unsigned short getBattMilliVolts(){return 4123;} void powerOff(){++off;} }; }
+namespace mesh { struct MainBoard { int off=0, reads=0; bool usb=false; bool isExternalPowered(){return usb;} unsigned short getBattMilliVolts(){++reads;return 4123;} void powerOff(){++off;} }; }
 struct NodePrefs { char node_name[32]="Test repeater"; float freq=869.525, bw=250; double node_lat=1,node_lon=2; int sf=9,cr=5,tx_power_dbm=22; };
 """)
     (d/'helpers/ui/DisplayDriver.h').write_text("""
@@ -97,11 +97,15 @@ int main(){
  sensors.gps.enabled=false;now+=1001;ui.loop();assert(has("Status: OFF"));
  sensors.available=false;now+=1001;ui.loop();assert(has("UNAVAILABLE"));
  user_btn.event=1;ui.loop();assert(has("4.123 V") && has("1 d 01 h 01 m"));
+ user_btn.event=1;ui.loop();assert(has("Charging & Power") && has("4.12 V") && has("USB: Disconnected") && has("Collecting") && has("Charging: Unknown") && has("Solar: Not detectable"));
+ for(auto& line:display.text) assert(line.size()<=21);
+ board.usb=true;now+=1001;ui.loop();assert(has("USB: Connected") && has("Charging: Unknown"));
  user_btn.event=1;ui.loop();assert(has("None heard"));
  the_mesh.count=8;now+=1001;ui.loop();assert(has("Neighbors: 8") && has("01020304") && display.text.size()==6);
  user_btn.event=3;ui.loop();assert(the_mesh.adverts==1 && has("Neighbors"));
  ui.loop();assert(the_mesh.adverts==1);
  now+=20001;ui.loop();assert(!display.on);
+ int reads=board.reads;now+=10000;ui.loop();assert(!display.on && board.reads==reads+1);
  user_btn.event=3;ui.loop();assert(the_mesh.adverts==2 && !display.on);
  user_btn.event=1;ui.loop();assert(display.on && has("Neighbors"));
  user_btn.event=1;ui.loop();assert(has("Test repeater"));
