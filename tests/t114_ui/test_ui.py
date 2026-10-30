@@ -25,7 +25,7 @@ extern SerialType Serial;
 #pragma once
 #include <Arduino.h>
 namespace mesh { struct MainBoard { int off=0; unsigned short getBattMilliVolts(){return 4123;} void powerOff(){++off;} }; }
-struct NodePrefs { char node_name[32]="Test repeater"; float freq=869.525, bw=250; int sf=9,cr=5,tx_power_dbm=22; };
+struct NodePrefs { char node_name[32]="Test repeater"; float freq=869.525, bw=250; double node_lat=1,node_lon=2; int sf=9,cr=5,tx_power_dbm=22; };
 """)
     (d/'helpers/ui/DisplayDriver.h').write_text("""
 #pragma once
@@ -52,11 +52,13 @@ struct DisplayDriver {
 #define BUTTON_EVENT_CLICK 1
 #define BUTTON_EVENT_LONG_PRESS 2
 #define BUTTON_EVENT_DOUBLE_CLICK 3
+#define BUTTON_EVENT_TRIPLE_CLICK 4
 struct Button { int event=0; void begin(){} int check(){int e=event;event=0;return e;} };
 extern Button user_btn;
 struct GPS {
  bool enabled=true, fresh=true; bool isEnabled(){return enabled;}
- bool hasFreshFix(uint32_t){return fresh;}
+ bool waitingTimeSync(){return !fresh;}
+ bool hasFreshFix(uint32_t){return fresh && enabled;}
  long satellitesCount(){return 9;} long getLatitude(){return 49640019;}
  long getLongitude(){return -8633326;} long getAltitude(){return 115000;}
 };
@@ -68,7 +70,10 @@ extern Sensors sensors;
 #include <Arduino.h>
 struct NeighbourInfo { struct {uint8_t pub_key[32]={1,2,3,4};} id; uint32_t heard_timestamp=0; int8_t snr=8; };
 struct MyMesh {
- int adverts=0, count=0;
+ int adverts=0, count=0, retries=0;
+ bool gpsAcquisitionSucceeded() const {return false;}
+ const char* gpsAcquisitionStatus() const {return "GPS SEARCHING";}
+ void startGPSAcquisition(){++retries;}
  void sendButtonAdvertisement(){sendSelfAdvertisement(1500,true);}
  void sendSelfAdvertisement(int delay,bool flood){if(delay==1500 && flood) ++adverts;}
  uint64_t getUIUptimeMinutes(){return 1501;}
@@ -105,6 +110,19 @@ int main(){
 """)
     subprocess.run(['g++','-std=c++11','-Wall','-Wextra','-Wno-unused-variable','-DT114_BUTTON_RGB','-DHELTEC_T114_WITH_DISPLAY','-DENV_INCLUDE_GPS=1','-I'+tmp,str(d/'UITask.cpp'),str(d/'test.cpp'),'-o',str(d/'test')],check=True)
     subprocess.run([str(d/'test')],check=True)
+
+    original=(d/'test.cpp').read_text()
+    start=original.index(' user_btn.event=1;ui.loop();assert(has("GPS Information")')
+    end=original.index(' user_btn.event=1;ui.loop();assert(has("4.123',start)
+    changed=original[:start]+'''
+ user_btn.event=4;ui.loop();assert(the_mesh.retries==0);
+ user_btn.event=1;ui.loop();assert(has("GPS SEARCHING") && has("3 clicks: Retry GPS"));
+ user_btn.event=4;ui.loop();assert(the_mesh.retries==1 && has("GPS SEARCHING"));
+ sensors.gps.fresh=false;now+=1001;ui.loop();assert(has("Saved Lat:") && !has("49.640019"));
+'''+original[end:]
+    (d/'session.cpp').write_text(changed)
+    subprocess.run(['g++','-std=c++11','-DT114_GPS_ACQUIRE','-DT114_BUTTON_RGB','-DHELTEC_T114_WITH_DISPLAY','-DENV_INCLUDE_GPS=1','-I'+tmp,str(d/'UITask.cpp'),str(d/'session.cpp'),'-o',str(d/'session')],check=True)
+    subprocess.run([str(d/'session')],check=True)
     subprocess.run(['g++','-std=c++11','-I'+tmp,'-c',str(d/'UITask.cpp'),'-o',str(d/'generic.o')],check=True)
     subprocess.run(['g++','-std=c++11','-DHELTEC_T114_WITH_DISPLAY','-I'+tmp,'-c',str(d/'UITask.cpp'),'-o',str(d/'no-gps.o')],check=True)
 print('T114 UI runtime screens, refresh, gestures, timeout and shutdown tests passed.')

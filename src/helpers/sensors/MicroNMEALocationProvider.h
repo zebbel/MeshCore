@@ -171,6 +171,15 @@ public :
         return isEnabled() && isValid() && _fix_seen && ageMs(_last_fix_ms) <= max_age_ms;
     }
 
+    bool hasValidDateTime() override {
+        int year = nmea.getYear(), month = nmea.getMonth(), day = nmea.getDay();
+        if (year < 2020 || year > 2099 || month < 1 || month > 12 || day < 1 ||
+            nmea.getHour() > 23 || nmea.getMinute() > 59 || nmea.getSecond() > 59) return false;
+        const uint8_t days[] = {31,28,31,30,31,30,31,31,30,31,30,31};
+        int limit = days[month - 1] + (month == 2 && year % 4 == 0);
+        return day <= limit;
+    }
+
     long getTimestamp() override { 
         DateTime dt(nmea.getYear(), nmea.getMonth(),nmea.getDay(),nmea.getHour(),nmea.getMinute(),nmea.getSecond());
         return dt.unixtime();
@@ -245,7 +254,11 @@ public :
             if (!_time_sync_needed && _clock != NULL && (millis() - _last_time_sync) > TIME_SYNC_INTERVAL) {
                 _time_sync_needed = true;
             }
-            if (_time_sync_needed && time_valid > 2) {
+            if (_time_sync_needed && time_valid > 2
+#ifdef T114_GPS_ACQUIRE
+                && hasValidDateTime()
+#endif
+            ) {
                 if (_clock != NULL) {
                     _clock->setCurrentTime(getTimestamp());
                     _time_sync_needed = false;

@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <math.h>
 #ifdef HELTEC_T114
 #include <T114Board.h>
 extern T114Board board;
@@ -145,6 +146,25 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {  // Legacy 
 }
 
 bool CommonCLI::savePrefs(FILESYSTEM* fs) {
+#ifdef T114_GPS_ACQUIRE
+  fs->remove("/prefs.tmp");
+  File staged = fs->open("/prefs.tmp", FILE_O_WRITE);
+  if (!staged) return false;
+  bool saved = _prefs->saveSerial(staged);
+  staged.close();
+  if (!saved) { fs->remove("/prefs.tmp"); return false; }
+  // Verify the serialized location before replacing the previous preferences.
+  File check = fs->open("/prefs.tmp");
+  NodePrefs verified;
+  bool valid = check && verified.loadSerial(check) &&
+      fabs(verified.node_lat - _prefs->node_lat) <= 0.0000005 &&
+      fabs(verified.node_lon - _prefs->node_lon) <= 0.0000005;
+  check.close();
+  if (!valid || !fs->rename("/prefs.tmp", "/prefs.json")) {
+    fs->remove("/prefs.tmp"); return false;
+  }
+  return true;
+#else
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
   fs->remove("/prefs.json");
   File file = fs->open("/prefs.json", FILE_O_WRITE);
@@ -159,6 +179,7 @@ bool CommonCLI::savePrefs(FILESYSTEM* fs) {
     return success;
   }
   return false;
+#endif
 }
 
 #define MIN_LOCAL_ADVERT_INTERVAL   60

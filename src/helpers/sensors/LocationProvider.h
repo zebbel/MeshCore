@@ -18,6 +18,7 @@ public:
     virtual long satellitesCount() = 0;
     virtual bool isValid() = 0;
     virtual long getTimestamp() = 0;
+    virtual bool hasValidDateTime() { return false; }
     // Observation-only freshness; unknown providers cannot certify a current fix.
     virtual bool hasFreshFix(uint32_t max_age_ms) { return false; }
     virtual void sendSentence(const char * sentence);

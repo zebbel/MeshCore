@@ -101,6 +101,38 @@ void UITask::renderCurrScreen() {
     _display->setColor(UIColor::primary_txt);
     _display->setCursor(0, 0);
     if (_screen == 1) {
+#ifdef T114_GPS_ACQUIRE
+      _display->print(the_mesh.gpsAcquisitionStatus());
+      bool live = false, synced = false;
+      long satellites = 0;
+#if ENV_INCLUDE_GPS
+      auto* gps = sensors.getLocationProvider();
+      live = gps && gps->hasFreshFix(5000);
+      satellites = gps && gps->isEnabled() ? gps->satellitesCount() : 0;
+      synced = gps && !gps->waitingTimeSync();
+#endif
+      _display->setCursor(0, 10);
+      snprintf(tmp, sizeof(tmp), "Sat:%ld Time:%s", satellites,
+               the_mesh.gpsAcquisitionSucceeded() ? "OK" : synced ? "SYNCED" : "WAIT");
+      _display->print(tmp);
+      double lat = _node_prefs->node_lat, lon = _node_prefs->node_lon;
+#if ENV_INCLUDE_GPS
+      if (live) { lat = gps->getLatitude()/1000000.0; lon = gps->getLongitude()/1000000.0; }
+#endif
+      _display->setCursor(0, 20);
+      snprintf(tmp, sizeof(tmp), "%sLat: %.6f", live ? "" : "Saved ", lat); _display->print(tmp);
+      _display->setCursor(0, 30);
+      snprintf(tmp, sizeof(tmp), "%sLon: %.6f", live ? "" : "Saved ", lon); _display->print(tmp);
+      _display->setCursor(0, 40);
+#if ENV_INCLUDE_GPS
+      if (live) { snprintf(tmp, sizeof(tmp), "Alt: %.1f m", gps->getAltitude()/1000.0); _display->print(tmp); }
+      else
+#endif
+      _display->print("Alt: -- (last known)");
+      _display->setCursor(0, 50); _display->print("3 clicks: Retry GPS");
+      return;
+#else
+
       _display->print("GPS Information");
       const char* status = "UNAVAILABLE";
       long satellites = 0;
@@ -136,6 +168,7 @@ void UITask::renderCurrScreen() {
         _display->setCursor(0, 50); _display->print("Alt: --");
       }
       return;
+#endif
     }
     if (_screen == 2) {
       _display->print("Battery & uptime");
@@ -215,6 +248,11 @@ void UITask::loop() {
     the_mesh.sendSelfAdvertisement(1500, true);
 #endif
     _auto_off = millis() + AUTO_OFF_MILLIS;
+    _next_refresh = 0;
+#endif
+#ifdef T114_GPS_ACQUIRE
+  } else if (ev == BUTTON_EVENT_TRIPLE_CLICK && _screen == 1) {
+    the_mesh.startGPSAcquisition();
     _next_refresh = 0;
 #endif
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {

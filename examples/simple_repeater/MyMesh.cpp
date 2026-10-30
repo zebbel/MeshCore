@@ -506,12 +506,18 @@ void MyMesh::logTx(mesh::Packet *pkt, int len) {
 #ifdef T114_BUTTON_RGB
   if (pkt->button_advert) {
     pkt->button_advert = false;
+#ifndef T114_GPS_ACQUIRE
     bool fresh = false;
-#if ENV_INCLUDE_GPS
+#endif
+#if ENV_INCLUDE_GPS && !defined(T114_GPS_ACQUIRE)
     auto* gps = sensors.getLocationProvider();
     fresh = gps && gps->hasFreshFix(5000);
 #endif
+#ifdef T114_GPS_ACQUIRE
+    board.flashButtonAdvert(_gpsSuccess);
+#else
     board.flashButtonAdvert(fresh);
+#endif
   }
 #endif
 #ifdef WITH_BRIDGE

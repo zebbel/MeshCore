@@ -201,6 +201,17 @@ public:
   void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) override;
   bool formatFileSystem() override;
   void sendSelfAdvertisement(int delay_millis, bool flood) override;
+#ifdef T114_GPS_ACQUIRE
+  void startGPSAcquisition();
+  void loopGPSAcquisition();
+  bool gpsAcquisitionSucceeded() const { return _gpsSuccess; }
+  const char* gpsAcquisitionStatus() const { return _gpsStatus; }
+private:
+  bool _gpsSuccess = false, _gpsAcquiring = false;
+  uint32_t _gpsStarted = 0;
+  const char* _gpsStatus = "GPS OFF";
+public:
+#endif
 #ifdef T114_BUTTON_RGB
   void sendButtonAdvertisement() {
     _button_advert_request = true;

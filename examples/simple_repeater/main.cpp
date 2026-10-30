@@ -105,6 +105,9 @@ void setup() {
   sensors.begin();
 
   the_mesh.begin(fs);
+#ifdef T114_GPS_ACQUIRE
+  the_mesh.startGPSAcquisition();
+#endif
 
 #ifdef DISPLAY_CLASS
   ui_task.begin(the_mesh.getNodePrefs(), FIRMWARE_BUILD_DATE, FIRMWARE_VERSION);
@@ -200,6 +203,9 @@ void loop() {
   board.loopAdvertFeedback();
 #endif
   sensors.loop();
+#ifdef T114_GPS_ACQUIRE
+  the_mesh.loopGPSAcquisition();
+#endif
 #ifdef DISPLAY_CLASS
   ui_task.loop();
 #endif

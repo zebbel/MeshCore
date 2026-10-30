@@ -75,7 +75,7 @@ struct GPS {bool fresh=false;bool hasFreshFix(int age){assert(age==5000);return 
 struct Sensors {GPS* getLocationProvider(){return &gps;}} sensors;
 struct Board {int flashes=0;bool blue=false;void flashButtonAdvert(bool f){++flashes;blue=f;}} board;
 class MyMesh {public:
- bool _button_advert_request=false;mesh::Packet* next=nullptr;int default_scope=0;
+ bool _gpsSuccess=false;bool _button_advert_request=false;mesh::Packet* next=nullptr;int default_scope=0;
  struct {int path_hash_mode=0;} _prefs;
  mesh::Packet* createSelfAdvert(){return next;}
  void sendFloodScoped(int,mesh::Packet*,int delay,int){assert(delay==1500);}
@@ -99,4 +99,7 @@ int main(){
 ''')
  subprocess.run(['g++','-std=c++11',str(d/'test.cpp'),'-o',str(d/'test')],check=True)
  subprocess.run([str(d/'test')],check=True)
+ (d/'test.cpp').write_text((d/'test.cpp').read_text().replace('gps.fresh=true;m.logTx', 'gps.fresh=false;m._gpsSuccess=true;m.logTx').replace('button.button_advert=true;gps.fresh=false;', 'button.button_advert=true;m._gpsSuccess=false;gps.fresh=true;'))
+ subprocess.run(['g++','-std=c++11','-DT114_GPS_ACQUIRE',str(d/'test.cpp'),'-o',str(d/'session')],check=True)
+ subprocess.run([str(d/'session')],check=True)
 print('Production callbacks: marked packet only, fresh GPS at completion, failure and duplicate suppression passed.')
