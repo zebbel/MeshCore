@@ -15,7 +15,8 @@ struct GPS {
  bool hasFreshFix(int){return fresh;} bool hasValidDateTime(){return date;}
  bool waitingTimeSync(){return waiting;} bool isEnabled(){return enabled;}
  void syncTime(){waiting=true;fresh=false;}
- long getTimestamp(){return 1800000000;} long getLatitude(){return 49640019;}
+ long lat=49640019;
+ long getTimestamp(){return 1800000000;} long getLatitude(){return lat;}
  long getLongitude(){return 8633326;}
 };
 struct Sensors {
@@ -31,6 +32,12 @@ struct MyMesh {
  bool _gpsSuccess=false,_gpsAcquiring=false;uint32_t _gpsStarted=0;const char* _gpsStatus="GPS OFF";
  struct {double node_lat=1,node_lon=2;int gps_enabled=0;} _prefs;
  CLI _cli;void* _fs=nullptr;Clock clock;
+ int adverts=0;
+ void sendSelfAdvertisement(int delay,bool flood){
+   if(delay!=1500 || !flood || !_gpsSuccess || _gpsAcquiring || _cli.saves==0 ||
+      _prefs.node_lat!=sensors.node_lat || _prefs.node_lon!=sensors.node_lon) __builtin_abort();
+   ++adverts;
+ }
  Clock* getRTCClock(){return &clock;}
  void startGPSAcquisition();void loopGPSAcquisition();
 };
@@ -44,21 +51,26 @@ void fixed(){sensors.gps.fresh=true;sensors.gps.date=true;sensors.gps.waiting=fa
 int main(){
  MyMesh m;m.startGPSAcquisition();assert(m._gpsAcquiring && sensors.starts==1 && !m._gpsSuccess);
  m.startGPSAcquisition();assert(sensors.starts==1);
- sensors.gps.fresh=true;m.loopGPSAcquisition();assert(m._cli.saves==0);
- fixed();m.clock.time=1800000010;m.loopGPSAcquisition();assert(m._cli.saves==0);
+ sensors.gps.fresh=true;m.loopGPSAcquisition();assert(m._cli.saves==0 && m.adverts==0);
+ fixed();m.clock.time=1800000010;m.loopGPSAcquisition();assert(m._cli.saves==0 && m.adverts==0);
  m.clock.time=1800000000;m.loopGPSAcquisition();
  assert(m._gpsSuccess && !sensors.gps.enabled && m._prefs.gps_enabled==0);
  assert(m._prefs.node_lat==49.640019 && m._prefs.node_lon==8.633326);
- m.loopGPSAcquisition();assert(m._gpsSuccess);
+ for(int i=0;i<100;++i){m.loopGPSAcquisition();}assert(m._gpsSuccess && m.adverts==1);
+ sensors.gps.lat=50123456;
+ m.startGPSAcquisition();fixed();m.loopGPSAcquisition();
+ assert(m.adverts==2 && m._prefs.node_lat==50.123456 && !sensors.gps.enabled);
+ for(int i=0;i<100;++i){m.loopGPSAcquisition();}assert(m.adverts==2);
  double saved=m._prefs.node_lat;
  m.startGPSAcquisition();assert(!m._gpsSuccess && sensors.gps.enabled);
  now=600000;m.loopGPSAcquisition();assert(!sensors.gps.enabled && !strcmp(m._gpsStatus,"GPS TIMEOUT"));
- assert(m._prefs.node_lat==saved);
+ assert(m._prefs.node_lat==saved && m.adverts==2);
  m.startGPSAcquisition();fixed();m._cli.ok=false;m.loopGPSAcquisition();
- assert(!m._gpsSuccess && m._prefs.node_lat==saved && !sensors.gps.enabled);
+ assert(!m._gpsSuccess && m._prefs.node_lat==saved && !sensors.gps.enabled && m.adverts==2);
  m._cli.ok=true;m.startGPSAcquisition();sensors.setSettingValue("gps","0");m.loopGPSAcquisition();
  assert(!m._gpsAcquiring && !strcmp(m._gpsStatus,"GPS OFF"));
  sensors.present=false;m.startGPSAcquisition();assert(!m._gpsSuccess && !strcmp(m._gpsStatus,"GPS UNAVAILABLE"));
+ assert(m.adverts==2);
  sensors.present=true;MyMesh reboot;reboot.startGPSAcquisition();assert(!reboot._gpsSuccess && sensors.gps.enabled);
 }
 """)

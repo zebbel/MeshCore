@@ -56,8 +56,11 @@ void MyMesh::loopGPSAcquisition() {
   }
   sensors.node_lat = lat; sensors.node_lon = lon;
   _gpsSuccess = true;
-  sensors.setSettingValue("gps", "0"); // transient only: never change _prefs.gps_enabled
+  // Consume this attempt before queuing through the normal advertisement path.
+  // Both prefs and shared coordinates are current; location policy remains intact.
   _gpsAcquiring = false;
+  sendSelfAdvertisement(1500, true); // not a button advert: no RGB feedback
+  sensors.setSettingValue("gps", "0"); // transient only: never change _prefs.gps_enabled
   _gpsStatus = "FIX SAVED - GPS OFF";
 #endif
 }
