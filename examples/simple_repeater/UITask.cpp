@@ -99,123 +99,66 @@ void UITask::renderCurrScreen() {
 #ifdef HELTEC_T114_WITH_DISPLAY
     _display->setTextSize(1);
     _display->setColor(UIColor::primary_txt);
-    _display->setCursor(0, 0);
+    if (_usbIdle) {
+      _display->drawTextCentered(64, 5, "USB Power");
+      _display->setTextSize(2);
+      if (_battery.percent() < 0) snprintf(tmp, sizeof(tmp), "--%%");
+      else snprintf(tmp, sizeof(tmp), "~%d%%", _battery.percent());
+      _display->drawTextCentered(64, 23, tmp);
+      drawBattery(28, 44, 70, 13);
+      return;
+    }
+    drawBanner();
     if (_screen == 1) {
+      const char* status = "GPS UNAVAILABLE";
+      bool success = false, live = false;
 #ifdef T114_GPS_ACQUIRE
-      _display->print(the_mesh.gpsAcquisitionStatus());
-      bool live = false, synced = false;
-      long satellites = 0;
+      status = the_mesh.gpsAcquisitionStatus();
+      success = the_mesh.gpsAcquisitionSucceeded();
+#endif
+      double lat = _node_prefs->node_lat, lon = _node_prefs->node_lon;
 #if ENV_INCLUDE_GPS
       auto* gps = sensors.getLocationProvider();
       live = gps && gps->hasFreshFix(5000);
-      satellites = gps && gps->isEnabled() ? gps->satellitesCount() : 0;
-      synced = gps && !gps->waitingTimeSync();
+      if (live) { lat=gps->getLatitude()/1000000.0; lon=gps->getLongitude()/1000000.0; }
 #endif
-      _display->setCursor(0, 10);
-      snprintf(tmp, sizeof(tmp), "Sat:%ld Time:%s", satellites,
-               the_mesh.gpsAcquisitionSucceeded() ? "OK" : synced ? "SYNCED" : "WAIT");
-      _display->print(tmp);
-      double lat = _node_prefs->node_lat, lon = _node_prefs->node_lon;
-#if ENV_INCLUDE_GPS
-      if (live) { lat = gps->getLatitude()/1000000.0; lon = gps->getLongitude()/1000000.0; }
-#endif
-      _display->setCursor(0, 20);
-      snprintf(tmp, sizeof(tmp), "%sLat: %.6f", live ? "" : "Saved ", lat); _display->print(tmp);
-      _display->setCursor(0, 30);
-      snprintf(tmp, sizeof(tmp), "%sLon: %.6f", live ? "" : "Saved ", lon); _display->print(tmp);
-      _display->setCursor(0, 40);
-#if ENV_INCLUDE_GPS
-      if (live) { snprintf(tmp, sizeof(tmp), "Alt: %.1f m", gps->getAltitude()/1000.0); _display->print(tmp); }
-      else
-#endif
-      _display->print("Alt: -- (last known)");
-      _display->setCursor(0, 50); _display->print("3 clicks: Retry GPS");
+      _display->drawTextEllipsized(0, 13, 128, status);
+      snprintf(tmp, sizeof(tmp), "%s  Time:%s", live ? "LIVE" : "SAVED", success ? "OK" : "WAIT");
+      _display->setCursor(0, 23); _display->print(tmp);
+      snprintf(tmp, sizeof(tmp), "Lat: %.6f", lat);
+      _display->setCursor(0, 33); _display->print(tmp);
+      snprintf(tmp, sizeof(tmp), "Lon: %.6f", lon);
+      _display->setCursor(0, 43); _display->print(tmp);
+      _display->setCursor(0, 53); _display->print("3 clicks: Retry GPS");
       return;
-#else
-
-      _display->print("GPS Information");
-      const char* status = "UNAVAILABLE";
-      long satellites = 0;
-#if ENV_INCLUDE_GPS
-      bool fresh = false;
-      auto* gps = sensors.getLocationProvider();
-      if (gps) {
-        if (!gps->isEnabled()) status = "OFF";
-        else {
-          fresh = gps->hasFreshFix(5000);
-          status = fresh ? "FIX" : "NO FIX";
-          satellites = gps->satellitesCount();
-        }
-      }
-#endif
-      _display->setCursor(0, 10);
-      snprintf(tmp, sizeof(tmp), "Status: %s", status); _display->print(tmp);
-      _display->setCursor(0, 20);
-      snprintf(tmp, sizeof(tmp), "Satellites: %ld", satellites); _display->print(tmp);
-#if ENV_INCLUDE_GPS
-      if (fresh) {
-        _display->setCursor(0, 30);
-        snprintf(tmp, sizeof(tmp), "Lat: %.6f", gps->getLatitude() / 1000000.0); _display->print(tmp);
-        _display->setCursor(0, 40);
-        snprintf(tmp, sizeof(tmp), "Lon: %.6f", gps->getLongitude() / 1000000.0); _display->print(tmp);
-        _display->setCursor(0, 50);
-        snprintf(tmp, sizeof(tmp), "Alt: %.1f m", gps->getAltitude() / 1000.0); _display->print(tmp);
-      } else
-#endif
-      {
-        _display->setCursor(0, 30); _display->print("Lat: --");
-        _display->setCursor(0, 40); _display->print("Lon: --");
-        _display->setCursor(0, 50); _display->print("Alt: --");
-      }
-      return;
-#endif
     }
     if (_screen == 2) {
-      _display->print("Battery & uptime");
-      _display->setCursor(0, 20);
-      snprintf(tmp, sizeof(tmp), "%.3f V", _board->getBattMilliVolts() / 1000.0);
-      _display->print(tmp);
-      uint64_t minutes = the_mesh.getUIUptimeMinutes();
-      _display->setCursor(0, 40);
-      snprintf(tmp, sizeof(tmp), "%lu d %02lu h %02lu m",
-               (unsigned long)(minutes / 1440), (unsigned long)(minutes / 60 % 24),
-               (unsigned long)(minutes % 60));
-      _display->print(tmp);
-      return;
-    }
-    if (_screen == 3) {
-      _display->print("Charging & Power");
-      _display->setCursor(0, 10);
-      if (_batteryTrend.milliVolts())
-        snprintf(tmp, sizeof(tmp), "Battery: %.2f V", _batteryTrend.milliVolts() / 1000.0);
-      else snprintf(tmp, sizeof(tmp), "Battery: -- V");
-      _display->print(tmp);
-      _display->setCursor(0, 20);
-      _display->print(_board->isExternalPowered() ? "USB: Connected" : "USB: Disconnected");
-      _display->setCursor(0, 30); _display->print("Solar: Not detectable");
-      _display->setCursor(0, 40);
-      snprintf(tmp, sizeof(tmp), "Trend: %s", _batteryTrend.trend()); _display->print(tmp);
-      _display->setCursor(0, 50); _display->print("Charging: Unknown");
-      return;
-    }
-    if (_screen == 4) {
-      NeighbourInfo rows[5];
-      int capacity = (_display->height() - 14) / 10;
-      if (capacity > 5) capacity = 5;
+      NeighbourInfo rows[4];
+      int capacity = (_display->height() - 23) / 10;
+      if (capacity > 4) capacity = 4;
       int count = the_mesh.getUINeighbours(rows, capacity);
-      snprintf(tmp, sizeof(tmp), "Neighbors: %d", count);
-      _display->print(tmp);
-      if (!count) {
-        _display->setCursor(0, 20); _display->print("None heard yet");
-      }
-      for (int i = 0; i < count && i < capacity; ++i) {
-        const auto* key = rows[i].id.pub_key;
-        snprintf(tmp, sizeof(tmp), "%02X%02X%02X%02X %+.2f",
-                 key[0], key[1], key[2], key[3], rows[i].snr / 4.0);
-        _display->setCursor(0, 14 + i * 10); _display->print(tmp);
+      snprintf(tmp, sizeof(tmp), "Neighbors: %d   SNR", count);
+      _display->setCursor(0, 13); _display->print(tmp);
+      if (!count) { _display->setCursor(0, 33); _display->print("None heard yet"); }
+      for (int i=0; i<count && i<capacity; ++i) {
+        const auto* key=rows[i].id.pub_key;
+        snprintf(tmp, sizeof(tmp), "%02X%02X%02X%02X %+.2f", key[0],key[1],key[2],key[3],rows[i].snr/4.0);
+        _display->setCursor(0, 23+i*10); _display->print(tmp);
       }
       return;
     }
+    _display->drawTextEllipsized(0, 13, 128, _node_prefs->node_name);
+    snprintf(tmp, sizeof(tmp), "%.3f MHz  SF%d", _node_prefs->freq, _node_prefs->sf);
+    _display->setCursor(0, 23); _display->print(tmp);
+    snprintf(tmp, sizeof(tmp), "BW %.2f  CR %d", _node_prefs->bw, _node_prefs->cr);
+    _display->setCursor(0, 33); _display->print(tmp);
+    snprintf(tmp, sizeof(tmp), "TX %d dBm", _node_prefs->tx_power_dbm);
+    _display->setCursor(0, 43); _display->print(tmp);
+    uint64_t minutes=the_mesh.getUIUptimeMinutes();
+    snprintf(tmp, sizeof(tmp), "Up %lu d %02lu h %02lu m", (unsigned long)(minutes/1440),
+             (unsigned long)(minutes/60%24), (unsigned long)(minutes%60));
+    _display->drawTextEllipsized(0, 53, 128, tmp);
+    return;
 #endif
     _display->setCursor(0, 0);
     _display->setTextSize(1);
@@ -231,18 +174,14 @@ void UITask::renderCurrScreen() {
     _display->setCursor(0, 30);
     sprintf(tmp, "BW: %03.2f CR: %d", _node_prefs->bw, _node_prefs->cr);
     _display->print(tmp);
-#ifdef HELTEC_T114_WITH_DISPLAY
-    _display->setCursor(0, 40);
-    snprintf(tmp, sizeof(tmp), "TX: %d dBm", _node_prefs->tx_power_dbm);
-    _display->print(tmp);
-#endif
+
   }
 }
 
 void UITask::loop() {
 #ifdef HELTEC_T114_WITH_DISPLAY
-  if (_batteryTrend.due(millis()))
-    _batteryTrend.sample(millis(), _board->getBattMilliVolts());
+  if (_battery.due(millis()))
+    _battery.sample(millis(), _board->getBattMilliVolts());
 #endif
 #if defined(PIN_USER_BTN) && defined(DISPLAY_CLASS)
   int ev = user_btn.check();
@@ -252,7 +191,8 @@ void UITask::loop() {
   if (ev == BUTTON_EVENT_CLICK) {
     if (_display->isOn()) {
 #ifdef HELTEC_T114_WITH_DISPLAY
-      _screen = (_screen + 1) % 5;
+      if (_usbIdle) _usbIdle = false;
+      else _screen = (_screen + 1) % 3;
 #endif
     } else {
       _display->turnOn();
@@ -270,7 +210,7 @@ void UITask::loop() {
     _next_refresh = 0;
 #endif
 #ifdef T114_GPS_ACQUIRE
-  } else if (ev == BUTTON_EVENT_TRIPLE_CLICK && _screen == 1) {
+  } else if (ev == BUTTON_EVENT_TRIPLE_CLICK && _screen == 1 && !_usbIdle) {
     the_mesh.startGPSAcquisition();
     _next_refresh = 0;
 #endif
@@ -284,6 +224,15 @@ void UITask::loop() {
   }
 #endif
 
+#ifdef HELTEC_T114_WITH_DISPLAY
+  // VBUS alone determines USB idle mode; solar is not inferred.
+  bool usb = _board->isExternalPowered();
+  bool idle = !_powering_off_at && int32_t(uint32_t(millis()) - uint32_t(_auto_off)) >= 0;
+  bool usbIdle = usb && idle;
+  if (_usbIdle != usbIdle) { _usbIdle=usbIdle; _next_refresh=0; }
+  if (usb && !_display->isOn()) { _display->turnOn(); _next_refresh=0; }
+  if (!usb && idle && _display->isOn()) _display->turnOff();
+#endif
   if (_display->isOn()) {
     if (millis() >= _next_refresh) {
       _display->startFrame();
@@ -292,9 +241,9 @@ void UITask::loop() {
 
       _next_refresh = millis() + 1000;   // refresh every second
     }
-    if (millis() > _auto_off) {
-      _display->turnOff();
-    }
+#ifndef HELTEC_T114_WITH_DISPLAY
+    if (millis() > _auto_off) _display->turnOff();
+#endif
   }
 
   if (_powering_off_at > 0) { // power off timer armed
@@ -310,3 +259,40 @@ void UITask::loop() {
     }
   }
 }
+
+#ifdef HELTEC_T114_WITH_DISPLAY
+void UITask::drawBattery(int x, int y, int w, int h) {
+  _display->drawRect(x, y, w, h);
+  _display->fillRect(x+w, y+h/3, 2, h/3);
+  int percent=_battery.percent();
+  if (percent > 0) _display->fillRect(x+2, y+2, (w-4)*percent/100, h-4);
+}
+
+void UITask::drawBanner() {
+  char text[16];
+  drawBattery(1, 1, 17, 8);
+  if (_battery.percent() < 0) snprintf(text,sizeof(text),"--%%");
+  else snprintf(text,sizeof(text),"~%d%%",_battery.percent());
+  _display->setCursor(23,0); _display->print(text);
+  ColorVal color=0xF800; // RGB565 red
+  const char* label="GPS !";
+#ifdef T114_GPS_ACQUIRE
+  if (the_mesh.gpsAcquisitionSucceeded()) { color=0x07E0; label="GPS OK"; }
+  else if (the_mesh.gpsAcquisitionActive()) {
+    color=0xFD20; label="GPS ...";
+  }
+#endif
+  _display->setColor(color);
+  // Satellite: two solar panels, central body and antenna.
+  // The text state keeps the indication readable without relying on color.
+  _display->drawRect(74,2,3,6);
+  _display->drawRect(82,2,3,6);
+  _display->fillRect(77,4,5,1);
+  _display->fillRect(78,3,3,4);
+  _display->fillRect(79,0,1,3);
+  _display->fillRect(78,0,3,1);
+  _display->setCursor(86,0); _display->print(label);
+  _display->setColor(UIColor::primary_txt);
+  _display->fillRect(0,11,128,1);
+}
+#endif

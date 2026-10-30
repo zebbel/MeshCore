@@ -103,6 +103,9 @@ void ST7789Display::clear() {
 
 void ST7789Display::startFrame(ColorVal bkg) {
   display.clear();  // TODO: use bkg
+#ifdef HELTEC_T114_WITH_DISPLAY
+  display.setStatusColor(ST77XX_WHITE);
+#endif
   setColor(UIColor::primary_txt);
   display.setFont(ArialMT_Plain_16);
 }
@@ -122,8 +125,16 @@ void ST7789Display::setTextSize(int sz) {
 
 void ST7789Display::setColor(ColorVal c) {
   _color = c;
+#ifdef HELTEC_T114_WITH_DISPLAY
+  display.setColor(_color ? OLEDDISPLAY_COLOR::WHITE : OLEDDISPLAY_COLOR::BLACK);
+  // The underlying framebuffer is monochrome. Tint only the GPS banner
+  // region during SPI output; changing the global RGB would tint all text.
+  if (_color > 2) display.setStatusColor(_color);
+  display.setRGB(ST77XX_WHITE);
+#else
   display.setColor((OLEDDISPLAY_COLOR)_color);
   display.setRGB(_color == OLEDDISPLAY_COLOR::WHITE ? ST77XX_WHITE : ST77XX_BLACK);
+#endif
 }
 
 void ST7789Display::setCursor(int x, int y) {

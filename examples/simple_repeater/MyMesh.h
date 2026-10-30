@@ -204,6 +204,7 @@ public:
 #ifdef T114_GPS_ACQUIRE
   void startGPSAcquisition();
   void loopGPSAcquisition();
+  bool gpsAcquisitionActive() const { return _gpsAcquiring; }
   bool gpsAcquisitionSucceeded() const { return _gpsSuccess; }
   const char* gpsAcquisitionStatus() const { return _gpsStatus; }
 private:

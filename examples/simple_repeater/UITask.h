@@ -3,7 +3,7 @@
 #include <helpers/ui/DisplayDriver.h>
 #include <helpers/CommonCLI.h>
 #ifdef HELTEC_T114_WITH_DISPLAY
-#include "BatteryTrend.h"
+#include "BatteryEstimate.h"
 #endif
 
 class UITask {
@@ -13,7 +13,10 @@ class UITask {
   int _prevBtnState;
 #ifdef HELTEC_T114_WITH_DISPLAY
   uint8_t _screen = 0;
-  BatteryTrend _batteryTrend;
+  BatteryEstimate _battery;
+  bool _usbIdle = false;
+  void drawBattery(int x, int y, int w, int h);
+  void drawBanner();
 #endif
   NodePrefs* _node_prefs;
   char _version_info[32];

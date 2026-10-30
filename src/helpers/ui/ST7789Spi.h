@@ -106,7 +106,20 @@ class ST7789Spi : public OLEDDisplay {
       SPISettings 		    _spiSettings;
       uint16_t            _RGB=0xFFFF;
       uint8_t             _buffheight;
+#ifdef HELTEC_T114_WITH_DISPLAY
+      uint16_t _statusColor=0xFFFF, _lastStatusColor=0xFFFF;
+#endif
+      uint16_t pixelRGB(uint16_t x, uint16_t y) const {
+#ifdef HELTEC_T114_WITH_DISPLAY
+        // Logical banner GPS area x=74..127, y=0..10, at T114 scaling.
+        if (x >= 138 && y < 23) return _statusColor;
+#endif
+        return _RGB;
+      }
   public:
+#ifdef HELTEC_T114_WITH_DISPLAY
+    void setStatusColor(uint16_t c) { _statusColor=(c>>8)|(c<<8); }
+#endif
     /* pass _cs as -1 to indicate "do not use CS pin", for cases where it is hard wired low */
     ST7789Spi(SPIClass *spiClass,uint8_t _rst, uint8_t _dc, uint8_t _cs, OLEDDISPLAY_GEOMETRY g = GEOMETRY_RAWMODE,uint16_t width=240,uint16_t height=135,int mosi=-1,int miso=-1,int clk=-1) {
       this->_spi = spiClass;
@@ -178,6 +191,14 @@ class ST7789Spi : public OLEDDisplay {
         yield();
        }
 
+#ifdef HELTEC_T114_WITH_DISPLAY
+       // A color-only change also needs a transfer despite identical bitmap bits.
+       if (_statusColor != _lastStatusColor) {
+         minBoundX=min(uint16_t(138),minBoundX); maxBoundX=max(uint16_t(displayWidth-1),maxBoundX);
+         minBoundY=0; maxBoundY=max(uint16_t(2),maxBoundY);
+         _lastStatusColor=_statusColor;
+       }
+#endif
        // If the minBoundY wasn't updated
        // we can savely assume that buffer_back[pos] == buffer[pos]
        // holdes true for all values of pos
@@ -197,7 +218,7 @@ class ST7789Spi : public OLEDDisplay {
               uint16_t *pixbuf = (uint16_t *)rtos_malloc(2 * pixbufcount);
               for (x = minBoundX; x <= maxBoundX; x++)
               {
-                pixbuf[x-minBoundX] = ((buffer[x + y * displayWidth]>>temp)&0x01)==1?_RGB:0;
+                pixbuf[x-minBoundX] = ((buffer[x + y * displayWidth]>>temp)&0x01)==1?pixelRGB(x,y*8+temp):0;
               }
 #ifdef ESP_PLATFORM
               _spi->transferBytes((uint8_t *)pixbuf, NULL, 2 * pixbufcount);
@@ -225,7 +246,7 @@ class ST7789Spi : public OLEDDisplay {
               uint16_t *pixbuf = (uint16_t *)rtos_malloc(2 * pixbufcount);
               for (x = 0; x < displayWidth; x++)
               {
-                pixbuf[x] = ((buffer[x + y * displayWidth]>>temp)&0x01)==1?_RGB:0;
+                pixbuf[x] = ((buffer[x + y * displayWidth]>>temp)&0x01)==1?pixelRGB(x,y*8+temp):0;
               }
 #ifdef ESP_PLATFORM
               _spi->transferBytes((uint8_t *)pixbuf, NULL, 2 * pixbufcount);
