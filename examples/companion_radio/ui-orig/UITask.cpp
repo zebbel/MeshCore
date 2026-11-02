@@ -2,6 +2,9 @@
 #include <Arduino.h>
 #include <helpers/TxtDataHelpers.h>
 #include "../MyMesh.h"
+#ifdef T1000_CHARGING_LED
+#include "T1000eBoard.h"
+#endif
 
 #define AUTO_OFF_MILLIS     15000   // 15 seconds
 #define BOOT_SCREEN_MILLIS   3000   // 3 seconds
@@ -426,12 +429,64 @@ void UITask::userLedHandler() {
   static int next_change = 0;
   static int last_increment = 0;
 
+#ifdef T1000_CHARGING_LED
+  // State belongs to the existing LED handler: no second GPIO writer/loop.
+  static uint8_t power_state = 255, candidate = 255;
+  static uint32_t sampled_at = 0, candidate_at = 0, breath_start = 0, frame_at = 0;
+  static bool sampled = false, breathing = false, override_active = false;
+  const uint32_t now = millis();
+  if (!sampled || uint32_t(now - sampled_at) >= 100) {
+    sampled = true;
+    sampled_at = now;
+    // Variant init already uses INPUT (no internal pull resistor) on both pins.
+    const uint8_t reading = digitalRead(EXT_PWR_DETECT) == HIGH
+      ? (digitalRead(EXT_CHRG_DETECT) == LOW ? 2 : 1) : 0;
+    if (reading != candidate) { candidate = reading; candidate_at = now; }
+    if (uint32_t(now - candidate_at) >= 300) power_state = candidate;
+  }
+#endif
 #ifdef ENABLE_POSITION_BUTTON
   if (!the_mesh.isStatusLedEnabled()) {
+#ifdef T1000_CHARGING_LED
+    if (breathing) T1000eBoard::stopStatusLedPWM();
+    breathing = false;
+#endif
     digitalWrite(PIN_STATUS_LED, !LED_STATE_ON);
     state = 0;
     next_change = millis();
     return;
+  }
+#endif
+
+#ifdef T1000_CHARGING_LED
+  // Unknown/debouncing at boot is dark; external power overrides status flashes.
+  if (power_state != 0) {
+    override_active = true;
+    state = 0;
+    next_change = millis();
+    if (power_state != 2) {
+      if (breathing) T1000eBoard::stopStatusLedPWM();
+      breathing = false;
+      digitalWrite(PIN_STATUS_LED, !LED_STATE_ON);
+    } else {
+      if (!breathing) { breathing = true; breath_start = now; frame_at = now - 20; }
+      if (uint32_t(now - frame_at) >= 20) {
+        frame_at = now;
+        uint32_t phase = uint32_t(now - breath_start) % 2000;
+        uint32_t ramp = phase <= 1000 ? phase : 2000 - phase;
+        // Smoothstep easing, 0 -> 255 -> 0 in two seconds, at most 50 updates/s.
+        uint32_t value = (ramp * ramp * (3000 - 2 * ramp)) / 1000000;
+        value = (value * 255) / 1000;
+        analogWrite(PIN_STATUS_LED, LED_STATE_ON == HIGH ? value : 255 - value);
+      }
+    }
+    return;
+  }
+  if (override_active) {
+    if (breathing) T1000eBoard::stopStatusLedPWM();
+    breathing = override_active = false;
+    state = 0;
+    next_change = millis() - 1;
   }
 #endif
 
@@ -458,6 +513,9 @@ void UITask::userLedHandler() {
   hardware-agnostic pre-shutdown activity should be done here 
 */
 void UITask::shutdown(bool restart){
+#ifdef T1000_CHARGING_LED
+  T1000eBoard::stopStatusLedPWM();
+#endif
 
   #ifdef PIN_BUZZER
   /* note: we have a choice here -

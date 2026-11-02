@@ -11,6 +11,10 @@ protected:
 public:
   T1000eBoard() : NRF52Board("T1000E_OTA") {}
   void begin();
+#ifdef T1000_CHARGING_LED
+  // Return ownership to GPIO before ordinary status flashes or shutdown.
+  static void stopStatusLedPWM();
+#endif
 
   uint16_t getBattMilliVolts() override {
   #ifdef BATTERY_PIN
@@ -50,6 +54,9 @@ public:
   }
 
   void powerOff() override {
+#ifdef T1000_CHARGING_LED
+    stopStatusLedPWM();
+#endif
     #ifdef HAS_GPS
         digitalWrite(GPS_VRTC_EN, LOW);
         digitalWrite(GPS_RESET, LOW);
