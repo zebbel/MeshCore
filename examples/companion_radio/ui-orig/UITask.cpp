@@ -445,19 +445,6 @@ void UITask::userLedHandler() {
     if (uint32_t(now - candidate_at) >= 300) power_state = candidate;
   }
 #endif
-#ifdef ENABLE_POSITION_BUTTON
-  if (!the_mesh.isStatusLedEnabled()) {
-#ifdef T1000_CHARGING_LED
-    if (breathing) T1000eBoard::stopStatusLedPWM();
-    breathing = false;
-#endif
-    digitalWrite(PIN_STATUS_LED, !LED_STATE_ON);
-    state = 0;
-    next_change = millis();
-    return;
-  }
-#endif
-
 #ifdef T1000_CHARGING_LED
   // Unknown/debouncing at boot is dark; external power overrides status flashes.
   if (power_state != 0) {
@@ -487,6 +474,17 @@ void UITask::userLedHandler() {
     breathing = override_active = false;
     state = 0;
     next_change = millis() - 1;
+  }
+#endif
+
+#ifdef ENABLE_POSITION_BUTTON
+  // The saved preference controls normal status flashes only. Charging above
+  // always takes priority; PWM is already detached when external power leaves.
+  if (!the_mesh.isStatusLedEnabled()) {
+    digitalWrite(PIN_STATUS_LED, !LED_STATE_ON);
+    state = 0;
+    next_change = millis();
+    return;
   }
 #endif
 

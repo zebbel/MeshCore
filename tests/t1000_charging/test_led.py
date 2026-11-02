@@ -40,10 +40,16 @@ struct UITask {int _msgcount=0;void userLedHandler();};
 int main(){UITask ui;
  auto tick=[&](uint32_t ms){now=ms;ui.userLedHandler();};
  tick(0);tick(100);tick(200);tick(300);tick(301);assert(output==1);tick(322);assert(output==0);
+ the_mesh.enabled=false;
  external=1;charge=0;tick(400);tick(500);external=0;tick(600);external=1;tick(700);tick(800);tick(900);
  assert(writes==0);tick(1000);assert(values.back()==0);
  int before=reads;tick(1010);assert(reads==before && values.size()==1);
- for(int t=1020;t<=3000;t+=20)tick(t);
+ for(int t=1020;t<=3000;t+=20){
+   if(t==1500)the_mesh.enabled=true;
+   if(t==2300)the_mesh.enabled=false;
+   tick(t);
+ }
+ assert(!the_mesh.enabled); // indication never rewrites the preference
  assert(values.size()==101 && values[0]==0 && values[50]==255 && values[100]==0);
  for(int i=1;i<=50;i++)assert(values[i]>=values[i-1]);
  for(int i=51;i<=100;i++)assert(values[i]<=values[i-1]);
@@ -51,14 +57,22 @@ int main(){UITask ui;
  charge=1;tick(3100);tick(3200);tick(3300);tick(3400);
  assert(!pwm[0].led && pwm[0].stopped && output==0);
  int n=writes;tick(4500);assert(writes==n && output==0);
+ the_mesh.enabled=true;tick(4501);assert(writes==n && output==0);
+ the_mesh.enabled=false;tick(4502);assert(writes==n && output==0);
  charge=0;tick(4600);tick(4700);tick(4800);tick(4900);tick(5400);assert(pwm[0].led);
 #ifdef ENABLE_POSITION_BUTTON
- the_mesh.enabled=false;tick(5401);assert(!pwm[0].led && output==0);
- tick(6000);assert(output==0);the_mesh.enabled=true;tick(6001);assert(values.back()==0);
+ tick(5401);assert(pwm[0].led && !the_mesh.enabled);
+ tick(6000);assert(values.back()>0 && !the_mesh.enabled);
 #endif
- external=0;tick(6100);tick(6200);tick(6300);tick(6400);assert(!pwm[0].led && output==1);
- tick(6421);assert(output==0);
- ui._msgcount=1;tick(10402);assert(output==1);tick(10500);assert(output==1);tick(10603);assert(output==0);
+ external=0;tick(6100);tick(6200);tick(6300);tick(6400);assert(!pwm[0].led);
+#ifdef ENABLE_POSITION_BUTTON
+ assert(output==0 && !the_mesh.enabled);
+ the_mesh.enabled=true;tick(6401);assert(output==1);
+#else
+ assert(output==1);
+#endif
+ tick(6422);assert(output==0);
+ ui._msgcount=1;tick(10403);assert(output==1);tick(10500);assert(output==1);tick(10604);assert(output==0);
  // A shared peripheral must not be stopped when detaching the LED.
  pwm[0].led=true;pwm[0].other=true;pwm[0].stopped=false;
  T1000eBoard::stopStatusLedPWM();assert(!pwm[0].led && !pwm[0].stopped && pwm[0].other && output==0);
