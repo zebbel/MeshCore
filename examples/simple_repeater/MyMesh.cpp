@@ -1264,6 +1264,19 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
     command += 3;
   }
 
+#ifdef T114_GPS_ACQUIRE
+  // Remote callers reach this handler only through the existing admin/replay
+  // checks in onPeerDataRecv; USB serial uses the same command dispatcher.
+  if (strcmp(command, "gps update") == 0) {
+    strcpy(reply, startGPSAcquisition());
+    return;
+  }
+  if (strcmp(command, "gps status") == 0) {
+    strcpy(reply, gpsAcquisitionStatus());
+    return;
+  }
+#endif
+
   // handle ACL related commands
   if (memcmp(command, "setperm ", 8) == 0) {   // format:  setperm {pubkey-hex} {permissions-int8}
     char* hex = &command[8];

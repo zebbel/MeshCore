@@ -202,7 +202,7 @@ public:
   bool formatFileSystem() override;
   void sendSelfAdvertisement(int delay_millis, bool flood) override;
 #ifdef T114_GPS_ACQUIRE
-  void startGPSAcquisition();
+  const char* startGPSAcquisition(); // immediate start result, not acquisition success
   void loopGPSAcquisition();
   bool gpsAcquisitionActive() const { return _gpsAcquiring; }
   bool gpsAcquisitionSucceeded() const { return _gpsSuccess; }

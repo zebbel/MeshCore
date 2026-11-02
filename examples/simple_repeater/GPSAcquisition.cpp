@@ -2,20 +2,27 @@
 #include "MyMesh.h"
 #include "target.h"
 
-void MyMesh::startGPSAcquisition() {
-  if (_gpsAcquiring) return;
+const char* MyMesh::startGPSAcquisition() {
+  if (_gpsAcquiring) return "GPS update already running";
   _gpsSuccess = false;
   _gpsStatus = "GPS UNAVAILABLE";
 #if ENV_INCLUDE_GPS
   auto* gps = sensors.getLocationProvider();
-  if (!gps) return;
+  if (!gps) return "ERR: GPS unavailable";
   const char* requested = sensors.getSettingByKey("gps");
-  if (!requested || (strcmp(requested, "1") && !sensors.setSettingValue("gps", "1"))) return;
+  if (!requested) return "ERR: GPS unavailable";
+  if ((strcmp(requested, "1") && !sensors.setSettingValue("gps", "1")) || !gps->isEnabled()) {
+    _gpsStatus = "GPS OFF";
+    return "ERR: GPS start failed";
+  }
   // Existing provider operation clears cached NMEA and requests a new time sync.
   gps->syncTime();
   _gpsStarted = millis();
   _gpsAcquiring = true;
   _gpsStatus = "GPS SEARCHING";
+  return "GPS update started";
+#else
+  return "ERR: GPS unavailable";
 #endif
 }
 

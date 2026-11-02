@@ -20,10 +20,10 @@ struct GPS {
  long getLongitude(){return 8633326;}
 };
 struct Sensors {
- GPS gps;bool present=true;double node_lat=0,node_lon=0;int starts=0,stops=0;
+ GPS gps;bool present=true,startOK=true,enableOK=true,setting=true;double node_lat=0,node_lon=0;int starts=0,stops=0;
  GPS* getLocationProvider(){return present?&gps:nullptr;}
- const char* getSettingByKey(const char*){return gps.enabled?"1":"0";}
- bool setSettingValue(const char*,const char* v){gps.enabled=v[0]=='1';if(gps.enabled)++starts;else ++stops;return present;}
+ const char* getSettingByKey(const char*){return setting?(gps.enabled?"1":"0"):nullptr;}
+ bool setSettingValue(const char*,const char* v){if(v[0]=='1' && !startOK)return false;gps.enabled=v[0]=='1' && enableOK;if(gps.enabled)++starts;else ++stops;return present;}
 };
 extern Sensors sensors;
 struct Clock {uint32_t time=1800000000;uint32_t getCurrentTime(){return time;}};
@@ -39,7 +39,7 @@ struct MyMesh {
    ++adverts;
  }
  Clock* getRTCClock(){return &clock;}
- void startGPSAcquisition();void loopGPSAcquisition();
+ const char* startGPSAcquisition();void loopGPSAcquisition();
 };
 """)
  (d/'target.h').write_text('#include "MyMesh.h"\n')
@@ -49,8 +49,8 @@ struct MyMesh {
 uint32_t now=0;Sensors sensors;
 void fixed(){sensors.gps.fresh=true;sensors.gps.date=true;sensors.gps.waiting=false;}
 int main(){
- MyMesh m;m.startGPSAcquisition();assert(m._gpsAcquiring && sensors.starts==1 && !m._gpsSuccess);
- m.startGPSAcquisition();assert(sensors.starts==1);
+ MyMesh m;assert(!strcmp(m.startGPSAcquisition(),"GPS update started"));assert(m._gpsAcquiring && sensors.starts==1 && !m._gpsSuccess);
+ assert(!strcmp(m.startGPSAcquisition(),"GPS update already running"));assert(sensors.starts==1);
  sensors.gps.fresh=true;m.loopGPSAcquisition();assert(m._cli.saves==0 && m.adverts==0);
  fixed();m.clock.time=1800000010;m.loopGPSAcquisition();assert(m._cli.saves==0 && m.adverts==0);
  m.clock.time=1800000000;m.loopGPSAcquisition();
@@ -69,9 +69,15 @@ int main(){
  assert(!m._gpsSuccess && m._prefs.node_lat==saved && !sensors.gps.enabled && m.adverts==2);
  m._cli.ok=true;m.startGPSAcquisition();sensors.setSettingValue("gps","0");m.loopGPSAcquisition();
  assert(!m._gpsAcquiring && !strcmp(m._gpsStatus,"GPS OFF"));
- sensors.present=false;m.startGPSAcquisition();assert(!m._gpsSuccess && !strcmp(m._gpsStatus,"GPS UNAVAILABLE"));
+ sensors.present=false;assert(!strcmp(m.startGPSAcquisition(),"ERR: GPS unavailable"));assert(!m._gpsSuccess && !strcmp(m._gpsStatus,"GPS UNAVAILABLE"));
  assert(m.adverts==2);
- sensors.present=true;MyMesh reboot;reboot.startGPSAcquisition();assert(!reboot._gpsSuccess && sensors.gps.enabled);
+ sensors.present=true;sensors.startOK=false;
+ assert(!strcmp(m.startGPSAcquisition(),"ERR: GPS start failed") && !m._gpsAcquiring);
+ sensors.startOK=true;sensors.enableOK=false;
+ assert(!strcmp(m.startGPSAcquisition(),"ERR: GPS start failed") && !m._gpsAcquiring);
+ sensors.enableOK=true;sensors.setting=false;
+ assert(!strcmp(m.startGPSAcquisition(),"ERR: GPS unavailable") && !m._gpsAcquiring);
+ sensors.setting=true;MyMesh reboot;reboot.startGPSAcquisition();assert(!reboot._gpsSuccess && sensors.gps.enabled);
 }
 """)
  subprocess.run(['g++','-std=c++11','-Wall','-Werror','-DT114_GPS_ACQUIRE','-DENV_INCLUDE_GPS=1','-I'+tmp,str(d/'GPSAcquisition.cpp'),str(d/'test.cpp'),'-o',str(d/'test')],check=True)
