@@ -81,7 +81,7 @@ git pull --ff-only
 bash build-station.sh
 ```
 
-It creates `MeshCore/release/` and puts both custom firmware releases there. It
+It creates `MeshCore/release/` and puts all four custom firmware builds there. It
 also works when invoked by absolute path from another working directory.
 The previously installed script above MeshCore is obsolete; use this one now.
 
@@ -132,17 +132,17 @@ recorded in release notes and its short form in filenames. Build date uses
 upstream's date format.
 
 The wrapper finds `pio` on PATH or at `~/.platformio/penv/bin/pio`; alternatively
-set `STATION_PIO` to its full executable path. It clean-builds both environments,
+set `STATION_PIO` to its full executable path. It clean-builds all four environments,
 validates the Heltec application/partitions and merged image, validates the UF2
 family/address bounds and DFU archive, updates names/manifests, and writes
-checksums. All files are staged until both builds and validation succeed.
+checksums. All files are staged until all four builds and validation succeed.
 
 After a successful pull and preflight checks, the entire `release/` directory
 is deleted and recreated before compilation. This removes all older versions,
 checksums, hidden files and subfolders. Keep anything you want to retain outside
 `release/`. The repository directory is locked so concurrent builds cannot erase
 each other's output. Generated `release/` files are ignored by Git. It runs `git pull --ff-only` before building. It does not change branches or flash
-either device; uploading requires `--release`.
+any device; uploading requires `--release`.
 
 ## Build and publish a GitHub release automatically
 
@@ -160,7 +160,7 @@ Then use:
 ./build-station.sh --release
 ```
 
-This builds both firmwares and publishes the seven files from that build to
+This builds all four firmwares and publishes the 15 files from that build to
 `https://github.com/zebbel/MeshCore/releases/tag/meshcoreStation-v1.0.1` (the tag
 uses the custom version file). Plain `./build-station.sh` still only builds.
 
@@ -172,7 +172,7 @@ may still select the upstream version label. GitHub credentials stay in GitHub
 CLI's normal credential store, not in the repository.
 
 The script creates a draft release targeting the exact built commit, uploads all
-seven files, checks their names and sizes, then publishes it as the latest
+15 files, checks their names and sizes, then publishes it as the latest
 release. Build or validation failures never create a release. Upload/verification
 failures leave a draft, not a partially populated public update. An existing
 release/tag is never overwritten. If an upload fails, inspect and remove the
@@ -198,3 +198,35 @@ script take effect immediately, then reads the new version and commit.
 Use the `meshcoreStation` branch with its upstream set to `origin/meshcoreStation`.
 After initially pulling this script update, just run `./build-station.sh` or
 `./build-station.sh --release`; a separate manual pull is no longer needed.
+
+
+## XIAO nRF52840 + Wio-SX1262 repeater
+
+The normal `bash build-station.sh` now clean-builds four targets: Heltec V4 USB,
+T1000-E BLE position companion, T114 display repeater, and `Xiao_nrf52_repeater`.
+It stages and validates all **15** artifacts before exposing the completed set.
+XIAO uses the existing D1/D2/D3/D4/D5 radio control mapping and D8/D9/D10 SPI.
+Its aggregation protocol is documented in [xiao-neighbour-snr.md](xiao-neighbour-snr.md).
+
+XIAO outputs are `Xiao_nrf52_repeater-<version>-<sha>-meshcoreStation-<station-version>`
+with `.uf2`, `.zip`, `.uf2.sha256` and `.zip.sha256` suffixes. UF2 family is
+`0xADA52840`. The existing linker script `boards/nrf52840_s140_v7.ld` reserves
+application flash `[0x27000,0xED000)`, with RAM `[0x20006000,0x20040000)`.
+The XIAO pre-link hook checks the actual resolved `$LDSCRIPT_PATH`; overrides
+that change the application region fail before linking. UF2 headers, family,
+block addresses and initial address are independently checked when packaging.
+Nordic DFU ZIPs require a readable, CRC-valid manifest and nonempty application
+BIN/DAT. Publication revalidates the named complete artifact set and hashes.
+
+For flashing, first verify SHA-256 and the installed XIAO bootloader/SoftDevice
+layout. Use the board's supported UF2 bootloader mode (double-reset where supported)
+and copy only the XIAO UF2, or use the existing Nordic DFU upload procedure with
+the XIAO ZIP. These are application images: do not write them at address zero or
+replace the SoftDevice/bootloader. Do not flash a T1000-E/T114 image to this board.
+An incompatible/missing bootloader requires the board vendor's recovery procedure;
+do not bypass the application bounds. Physical flashing/startup remains untested.
+
+Default operation remains build-only. No publication was executed for this
+unreleased development task; the custom version stays unchanged until an authorized
+release. Build/release tests use simulated compilers and mocked remote operations,
+so their generated files and “Published” test output are not real firmware/releases.

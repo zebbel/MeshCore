@@ -14,6 +14,7 @@ with tempfile.TemporaryDirectory() as tmp:
         struct.pack_into('<I', data, 508, 0x0AB16F30)
         return data
     for target, start, limit in [('Heltec_t114_repeater', 0x26000, 0xED000),
+                                 ('Xiao_nrf52_repeater', 0x27000, 0xED000),
                                  ('t1000e_companion_radio_ble_position', 0x27000, 0xD4000)]:
         p = root / (target + '.uf2')
         p.write_bytes(block(start))

@@ -14,7 +14,11 @@ RADIO_CLASS radio = new Module(P_LORA_NSS, P_LORA_DIO_1, P_LORA_RESET, P_LORA_BU
 WRAPPER_CLASS radio_driver(radio, board);
 
 VolatileRTCClock fallback_clock;
+#ifdef XIAO_NEIGHBOUR_SNR
+XiaoRepeaterClock rtc_clock(fallback_clock);
+#else
 AutoDiscoverRTCClock rtc_clock(fallback_clock);
+#endif
 
 EnvironmentSensorManager sensors;
 

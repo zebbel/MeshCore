@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate all three staged deliverables before the build wrapper exposes them."""
+"""Validate all four staged deliverables before the build wrapper exposes them."""
 import hashlib
 import json
 import pathlib
@@ -7,6 +7,8 @@ import struct
 import re
 import zipfile
 import sys
+import tempfile
+import shutil
 
 
 def verify(folder):
@@ -26,6 +28,9 @@ def verify(folder):
         raise ValueError('Heltec release verification failed')
     verify_nordic(folder, t1000, 0x27000, 0xD4000)
     verify_nordic(folder, 'Heltec_t114_repeater', 0x26000, 0xED000)
+    verify_nordic(folder, 'Xiao_nrf52_repeater', 0x27000, 0xED000)
+    for target in (t1000, 'Heltec_t114_repeater', 'Xiao_nrf52_repeater'):
+        verify_dfu(folder / (target + '.zip'))
 
 
 def verify_nordic(folder, target, start, limit):
@@ -48,8 +53,25 @@ def verify_nordic(folder, target, start, limit):
         addresses.add(addr)
     if min(addresses) != start:
         raise ValueError(f'UF2 start does not match {target} linker layout')
-    (folder / (uf2_name + '.sha256')).write_text(
-        hashlib.sha256(data).hexdigest() + '  ' + uf2_name + '\n')
+    checksum = folder / (uf2_name + '.sha256')
+    expected = hashlib.sha256(data).hexdigest() + '  ' + uf2_name + '\n'
+    if checksum.exists() and checksum.read_text() != expected:
+        raise ValueError('Incorrect UF2 checksum')
+    checksum.write_text(expected)
+
+
+def verify_dfu(path):
+    with zipfile.ZipFile(path) as archive:
+        names=archive.namelist()
+        if len(names)!=len(set(names)) or archive.testzip() is not None:
+            raise ValueError('Corrupt or ambiguous Nordic DFU archive')
+        app=json.loads(archive.read('manifest.json'))['manifest']['application']
+        files=[app['bin_file'],app['dat_file']]
+        if files[0]==files[1] or not files[0].endswith('.bin') or not files[1].endswith('.dat'):
+            raise ValueError('Invalid DFU application names')
+        for name in files:
+            if pathlib.PurePosixPath(name).name != name or not archive.read(name):
+                raise ValueError('Missing or empty DFU application contents')
 
 
 def name_release(folder, version, commit, station_version):
@@ -93,20 +115,54 @@ def name_release(folder, version, commit, station_version):
         (folder / (name + '.sha256')).write_text(
             hashlib.sha256((folder / name).read_bytes()).hexdigest() + '  ' + name + '\n')
 
-    target = 'Heltec_t114_repeater'
-    with zipfile.ZipFile(folder / (target + '.zip')) as archive:
-        if archive.testzip() is not None:
-            raise ValueError('Invalid T114 DFU archive')
-        app = json.loads(archive.read('manifest.json'))['manifest']['application']
-        for key in ('bin_file', 'dat_file'):
-            if not archive.read(app[key]):
-                raise ValueError('Empty T114 DFU payload')
-    (folder / (target + '.uf2.sha256')).unlink()
-    for ext in ('.uf2', '.zip'):
-        name = f'{target}-{version}-{commit}-meshcoreStation-{station_version}' + ext
-        (folder / (target + ext)).rename(folder / name)
-        (folder / (name + '.sha256')).write_text(
-            hashlib.sha256((folder / name).read_bytes()).hexdigest() + '  ' + name + '\n')
+    for target in ('Heltec_t114_repeater', 'Xiao_nrf52_repeater'):
+        with zipfile.ZipFile(folder / (target + '.zip')) as archive:
+            if archive.testzip() is not None:
+                raise ValueError('Invalid Nordic DFU archive')
+            app = json.loads(archive.read('manifest.json'))['manifest']['application']
+            for key in ('bin_file', 'dat_file'):
+                if not archive.read(app[key]):
+                    raise ValueError('Empty Nordic DFU payload')
+        (folder / (target + '.uf2.sha256')).unlink()
+        for ext in ('.uf2', '.zip'):
+            name = f'{target}-{version}-{commit}-meshcoreStation-{station_version}' + ext
+            (folder / (target + ext)).rename(folder / name)
+            (folder / (name + '.sha256')).write_text(
+                hashlib.sha256((folder / name).read_bytes()).hexdigest() + '  ' + name + '\n')
+
+
+def verify_release_assets(paths):
+    """Revalidate named artifacts at the publication boundary, not just hashes."""
+    paths = [pathlib.Path(p) for p in paths]
+    manifest_path = next(p for p in paths if p.suffix == '.json')
+    manifest = json.loads(manifest_path.read_text())
+    version, commit, station = (manifest[k] for k in ('meshcore_version', 'commit', 'meshcoreStation_version'))
+    suffix = f'{version}-{commit}-meshcoreStation-{station}'
+    heltec = 'heltec_v4_companion_radio_usb'
+    mapping = {heltec+'.bin': f'{heltec}-{suffix}.bin', heltec+'.json': f'{heltec}-{suffix}.json',
+               heltec+'-merged.bin': f'{heltec}-{version}-{commit}-merged-meshcoreStation-{station}.bin'}
+    for target, public in (('t1000e_companion_radio_ble_position', 't1000e_companion_radio_ble'),
+                           ('Heltec_t114_repeater', 'Heltec_t114_repeater'),
+                           ('Xiao_nrf52_repeater', 'Xiao_nrf52_repeater')):
+        for ext in ('.uf2', '.zip'):
+            mapping[target+ext] = public+'-'+suffix+ext
+    expected = set(mapping.values())
+    expected |= {p+'.sha256' for p in expected if p.endswith(('.uf2','.zip'))}
+    if set(p.name for p in paths) != expected:
+        raise ValueError('Release artifacts do not match one complete named build')
+    by_name = {p.name:p for p in paths}
+    for name in expected:
+        if name.endswith('.sha256'):
+            original = name[:-7]
+            if by_name[name].read_text().strip() != hashlib.sha256(by_name[original].read_bytes()).hexdigest()+'  '+original:
+                raise ValueError('Invalid release checksum')
+    with tempfile.TemporaryDirectory(prefix='station-verify-') as tmp:
+        folder=pathlib.Path(tmp)
+        for dest, source in mapping.items(): shutil.copyfile(by_name[source],folder/dest)
+        manifest['image']=heltec+'.bin'
+        (folder/(heltec+'.json')).write_text(json.dumps(manifest))
+        verify(folder)
+        name_release(folder,version,commit,station)
 
 
 if __name__ == '__main__':

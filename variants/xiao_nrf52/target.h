@@ -18,7 +18,22 @@
 
 extern XiaoNrf52Board board;
 extern WRAPPER_CLASS radio_driver;
+#ifdef XIAO_NEIGHBOUR_SNR
+// The fallback starts at a fixed date. Do not label that date as known UTC.
+class XiaoRepeaterClock : public AutoDiscoverRTCClock {
+  bool confirmed = false;
+public:
+  XiaoRepeaterClock(mesh::RTCClock& fallback) : AutoDiscoverRTCClock(fallback) {}
+  void setCurrentTime(uint32_t time) override {
+    AutoDiscoverRTCClock::setCurrentTime(time);
+    confirmed = time >= 1577836800UL && time < 4102444800UL;
+  }
+  bool hasConfirmedTime() const { return confirmed; }
+};
+extern XiaoRepeaterClock rtc_clock;
+#else
 extern AutoDiscoverRTCClock rtc_clock;
+#endif
 extern EnvironmentSensorManager sensors;
 
 bool radio_init();

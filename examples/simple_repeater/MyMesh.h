@@ -1,4 +1,7 @@
 #pragma once
+#ifdef XIAO_NEIGHBOUR_SNR
+#include "NeighbourSNR.h"
+#endif
 
 #include <Arduino.h>
 #include <Mesh.h>
@@ -102,6 +105,10 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   unsigned long dirty_contacts_expiry;
 #if MAX_NEIGHBOURS
   NeighbourInfo neighbours[MAX_NEIGHBOURS];
+#ifdef XIAO_NEIGHBOUR_SNR
+  NeighbourSNR neighbourSNR;
+  void maintainNeighbourSNR(bool sync = false);
+#endif
 #endif
   CayenneLPP telemetry;
   unsigned long set_radio_at, revert_radio_at;

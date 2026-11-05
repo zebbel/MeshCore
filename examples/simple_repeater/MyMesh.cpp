@@ -1,5 +1,8 @@
 #include "MyMesh.h"
 #include <algorithm>
+#ifdef XIAO_NEIGHBOUR_SNR
+#include <Adafruit_nRFCrypto.h>
+#endif
 
 /* ------------------------------ Config -------------------------------- */
 
@@ -62,6 +65,12 @@
 
 void MyMesh::putNeighbour(const mesh::Identity &id, uint32_t timestamp, float snr) {
 #if MAX_NEIGHBOURS // check if neighbours enabled
+#ifdef XIAO_NEIGHBOUR_SNR
+  maintainNeighbourSNR(true);
+  if (!isfinite(snr) || snr < -32.0f || snr > 31.75f) return;
+  neighbourSNR.observe(id.pub_key, (int8_t)(snr * 4));
+  maintainNeighbourSNR(true);
+#endif
   // find existing neighbour, else use least recently updated
   uint32_t oldest_timestamp = 0xFFFFFFFF;
   NeighbourInfo *neighbour = &neighbours[0];
@@ -73,9 +82,14 @@ void MyMesh::putNeighbour(const mesh::Identity &id, uint32_t timestamp, float sn
     }
 
     // otherwise we should update the least recently updated neighbour
-    if (neighbours[i].heard_timestamp < oldest_timestamp) {
+#ifdef XIAO_NEIGHBOUR_SNR
+    uint32_t ageKey = neighbours[i].heard_timestamp ? neighbourSNR.heard(neighbours[i].id.pub_key) + 1 : 0;
+#else
+    uint32_t ageKey = neighbours[i].heard_timestamp;
+#endif
+    if (ageKey < oldest_timestamp) {
       neighbour = &neighbours[i];
-      oldest_timestamp = neighbour->heard_timestamp;
+      oldest_timestamp = ageKey;
     }
   }
 
@@ -83,6 +97,10 @@ void MyMesh::putNeighbour(const mesh::Identity &id, uint32_t timestamp, float sn
   neighbour->id = id;
   neighbour->advert_timestamp = timestamp;
   neighbour->heard_timestamp = getRTCClock()->getCurrentTime();
+#ifdef XIAO_NEIGHBOUR_SNR
+  // Existing table uses zero as empty even while the RTC is unset.
+  if (!neighbour->heard_timestamp) neighbour->heard_timestamp = 1;
+#endif
   neighbour->snr = (int8_t)(snr * 4);
 #endif
 }
@@ -209,6 +227,13 @@ uint8_t MyMesh::handleAnonClockReq(const mesh::Identity& sender, uint32_t sender
 }
 
 int MyMesh::handleRequest(ClientInfo *sender, uint32_t sender_timestamp, uint8_t *payload, size_t payload_len) {
+  if (!payload_len) return 0;
+#ifdef XIAO_NEIGHBOUR_SNR
+  if (payload[0] == NeighbourSNR::REQUEST) {
+    memcpy(reply_data, &sender_timestamp, 4);
+    return 4 + neighbourSNR.reply(payload, payload_len, reply_data+4, sizeof(reply_data)-4);
+  }
+#endif
   // uint32_t now = getRTCClock()->getCurrentTimeUnique();
   // memcpy(reply_data, &now, 4);   // response packets always prefixed with timestamp
   memcpy(reply_data, &sender_timestamp, 4); // reflect sender_timestamp back in response packet (kind of like a 'tag')
@@ -963,6 +988,13 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
 }
 
 void MyMesh::begin(FILESYSTEM *fs) {
+#ifdef XIAO_NEIGHBOUR_SNR
+  // CC310 hardware RNG, initialized by NRF52Board::begin(), once per boot.
+  uint8_t session[16] = {};
+  const bool sessionReady = nRFCrypto.Random.generate(session, sizeof(session));
+  if (sessionReady) session[15] |= 1; // all-zero session is reserved for initial requests
+  neighbourSNR.begin(millis(), rtc_clock.hasConfirmedTime() ? getRTCClock()->getCurrentTime() : 0, session, sessionReady);
+#endif
   mesh::Mesh::begin();
   _fs = fs;
   // load persisted prefs
@@ -1330,6 +1362,9 @@ void MyMesh::loop() {
   bridge.loop();
 #endif
 
+#ifdef XIAO_NEIGHBOUR_SNR
+  maintainNeighbourSNR();
+#endif
   mesh::Mesh::loop();
 
   if (next_flood_advert && millisHasNowPassed(next_flood_advert)) {
@@ -1377,6 +1412,23 @@ bool MyMesh::hasPendingWork() const {
 #endif
   return _mgr->getOutboundTotal() > 0;
 }
+
+#ifdef XIAO_NEIGHBOUR_SNR
+void MyMesh::maintainNeighbourSNR(bool sync) {
+  static uint32_t lastSync = 0, lastTick = 0;
+  uint32_t now = millis();
+  if (!sync && uint32_t(now-lastTick) < 1000) return;
+  lastTick = now;
+  neighbourSNR.tick(now, rtc_clock.hasConfirmedTime() ? getRTCClock()->getCurrentTime() : 0);
+  if (!sync && uint32_t(now-lastSync) < 60000) return;
+  lastSync = now;
+  for (auto& neighbour : neighbours) {
+    if (neighbour.heard_timestamp && !neighbourSNR.active(neighbour.id.pub_key))
+      neighbour = NeighbourInfo();
+  }
+}
+#endif
+
 
 #ifdef HELTEC_T114_WITH_DISPLAY
 int MyMesh::getUINeighbours(NeighbourInfo* out, int capacity) const {

@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import tempfile
+import importlib.util
 
 REPO = 'zebbel/MeshCore'
 BRANCH = 'meshcoreStation'
@@ -41,28 +42,40 @@ def check(commit, version):
 def publish(commit, version, assets):
     tag = check(commit, version)
     paths = [Path(p).resolve() for p in assets]
-    if len(paths) != 11 or len({p.name for p in paths}) != 11:
-        raise ValueError('Expected the eleven files from one completed three-target build')
+    if len(paths) != 15 or len({p.name for p in paths}) != 15:
+        raise ValueError('Expected the fifteen files from one completed four-target build')
     for path in paths:
         if path.parent != ROOT / 'release' or not path.is_file() or not path.stat().st_size:
             raise ValueError('Missing or unexpected release asset')
         if f'-meshcoreStation-{version}.' not in path.name:
             raise ValueError('Release asset version mismatch')
     # Require all targets and verify checksums before any remote write.
-    expected_prefixes = ('heltec_v4_companion_radio_usb-', 't1000e_companion_radio_ble-', 'Heltec_t114_repeater-')
+    expected_prefixes = ('heltec_v4_companion_radio_usb-', 't1000e_companion_radio_ble-', 'Heltec_t114_repeater-', 'Xiao_nrf52_repeater-')
     if any(not any(p.name.startswith(prefix) for p in paths) for prefix in expected_prefixes):
         raise ValueError('Missing firmware target')
+    for prefix in expected_prefixes[1:]:
+        firmware = [p for p in paths if p.name.startswith(prefix) and p.suffix == '.uf2']
+        if len(firmware) != 1:
+            raise ValueError('Missing or duplicate Nordic target')
+        base = firmware[0].name[:-4]
+        if {p.name for p in paths if p.name.startswith(prefix)} != {base + ext for ext in ('.uf2', '.zip', '.uf2.sha256', '.zip.sha256')}:
+            raise ValueError('Incomplete Nordic target')
     for path in paths:
         if path.name.endswith(('.uf2', '.zip')):
             checksum = path.with_name(path.name + '.sha256')
             expected = hashlib.sha256(path.read_bytes()).hexdigest() + '  ' + path.name
             if checksum not in paths or checksum.read_text().strip() != expected:
                 raise ValueError('Missing or invalid firmware checksum')
+    spec = importlib.util.spec_from_file_location('station_verify', Path(__file__).with_name('verify-station-build.py'))
+    verifier = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(verifier)
+    verifier.verify_release_assets(paths)
     notes = (f'meshcoreStation custom firmware {version}\n\nSource commit: {commit}\n\n'
              'Heltec V4 OLED USB companion: application .bin + .json for updates; '
              'the separate merged .bin is for full flashing.\n'
              'Seeed T1000-E BLE companion: private-channel position button; UF2 or Nordic DFU ZIP.\n'
              'Heltec T114 display repeater: UF2 or Nordic DFU ZIP.\n'
+             'XIAO nRF52840 Wio-SX1262 repeater: UF2 or Nordic DFU ZIP.\n'
              'Position sending is disabled until configured. See docs/t1000-position-button.md.\n')
     with tempfile.TemporaryDirectory(prefix='station-release-') as folder:
         notes_file = Path(folder) / 'notes.md'
@@ -92,5 +105,5 @@ if __name__ == '__main__':
             check(args.commit, args.version)
         else:
             publish(args.commit, args.version, args.assets)
-    except (RuntimeError, ValueError, OSError) as exc:
+    except (RuntimeError, ValueError, OSError, KeyError, StopIteration) as exc:
         raise SystemExit(str(exc))
