@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate all four staged deliverables before the build wrapper exposes them."""
+"""Validate all seven staged deliverables before the build wrapper exposes them."""
 import hashlib
 import json
 import pathlib
@@ -9,6 +9,72 @@ import zipfile
 import sys
 import tempfile
 import shutil
+
+
+WATCH_TARGETS = (
+    'lilygo_twatch_ultra_companion_radio_usb',
+    'lilygo_twatch_ultra_companion_radio_ble',
+    'lilygo_twatch_ultra_repeater',
+)
+WATCH_PARTITIONS = (
+    (1, 2, 0x9000, 0x5000, b'nvs'),
+    (1, 0, 0xe000, 0x2000, b'otadata'),
+    (0, 16, 0x10000, 0x400000, b'app0'),
+    (0, 17, 0x410000, 0x400000, b'app1'),
+    (1, 130, 0x810000, 0x7e0000, b'spiffs'),
+    (1, 3, 0xff0000, 0x10000, b'coredump'),
+)
+
+
+def validate_watch_partitions(data):
+    entries = b''.join(struct.pack('<HBBII16sI', 0x50aa, *row, 0) for row in WATCH_PARTITIONS)
+    expected = entries + b'\xeb\xeb' + b'\xff'*14 + hashlib.md5(entries).digest()
+    if data != expected.ljust(3072, b'\xff'):
+        raise ValueError('T-Watch Ultra partition table does not match the expected layout')
+
+
+def watch_names(target, version, commit, station):
+    app = f'{target}-{version}-{commit}-meshcoreStation-{station}'
+    merged = f'{target}-{version}-{commit}-merged-meshcoreStation-{station}'
+    return {target+'.bin': app+'.bin', target+'.json': app+'.json',
+            target+'-merged.bin': merged+'.bin'}
+
+
+def watch_manifest(target, app, merged):
+    partitions = merged[0x8000:0x8c00]
+    validate_watch_partitions(partitions)
+    # Both image headers must identify ESP32-S3 with 16 MB flash.
+    if (len(app) < 24 or len(app) > 0x400000 or app[0] != 0xe9
+            or app[3] >> 4 != 4 or struct.unpack_from('<H', app, 12)[0] != 9
+            or merged[0] != 0xe9 or len(merged) > 0x1000000
+            or merged[3] >> 4 != 4 or struct.unpack_from('<H', merged, 12)[0] != 9
+            or merged[0x10000:0x10000 + len(app)] != app):
+        raise ValueError(f'Invalid T-Watch Ultra image for {target}')
+    return dict(schema=1, target=target, chip='esp32s3', offset=0x10000,
+                image=target+'.bin', sha256=hashlib.sha256(app).hexdigest(),
+                partition_sha256=hashlib.sha256(partitions).hexdigest())
+
+
+def verify_watch(folder, target):
+    app = (folder / (target+'.bin')).read_bytes()
+    merged = (folder / (target+'-merged.bin')).read_bytes()
+    manifest = json.loads((folder / (target+'.json')).read_text())
+    if manifest != watch_manifest(target, app, merged):
+        raise ValueError(f'Invalid T-Watch Ultra manifest for {target}')
+
+
+def stage_watch(build, folder, target):
+    if target not in WATCH_TARGETS:
+        raise ValueError('Unknown T-Watch Ultra target')
+    build, folder = pathlib.Path(build), pathlib.Path(folder)
+    app = (build / 'firmware.bin').read_bytes()
+    merged = (build / 'firmware-merged.bin').read_bytes()
+    if (build / 'partitions.bin').read_bytes() != merged[0x8000:0x8c00]:
+        raise ValueError('Merged T-Watch Ultra partition table differs from the build')
+    manifest = watch_manifest(target, app, merged)
+    (folder / (target+'.bin')).write_bytes(app)
+    (folder / (target+'-merged.bin')).write_bytes(merged)
+    (folder / (target+'.json')).write_text(json.dumps(manifest, indent=2) + '\n')
 
 
 def verify(folder):
@@ -26,6 +92,8 @@ def verify(folder):
             or manifest.get('sha256') != hashlib.sha256(image).hexdigest()
             or not image or image[0] != 0xE9 or len(image) > 0x140000):
         raise ValueError('Heltec release verification failed')
+    for target in WATCH_TARGETS:
+        verify_watch(folder, target)
     verify_nordic(folder, t1000, 0x27000, 0xD4000)
     verify_nordic(folder, 'Heltec_t114_repeater', 0x26000, 0xED000)
     verify_nordic(folder, 'Xiao_nrf52_repeater', 0x27000, 0xED000)
@@ -130,11 +198,25 @@ def name_release(folder, version, commit, station_version):
             (folder / (name + '.sha256')).write_text(
                 hashlib.sha256((folder / name).read_bytes()).hexdigest() + '  ' + name + '\n')
 
+    for target in WATCH_TARGETS:
+        mapping = watch_names(target, version, commit, station_version)
+        manifest_path = folder / (target+'.json')
+        watch = json.loads(manifest_path.read_text())
+        watch.update(image=mapping[target+'.bin'], meshcore_version=version,
+                     meshcoreStation_version=station_version, commit=commit)
+        manifest_path.write_text(json.dumps(watch, indent=2) + '\n')
+        for source, name in mapping.items():
+            (folder / source).rename(folder / name)
+            if name.endswith('.bin'):
+                checksum = hashlib.sha256((folder / name).read_bytes()).hexdigest()
+                (folder / (name+'.sha256')).write_text(f'{checksum}  {name}\n')
+
 
 def verify_release_assets(paths):
     """Revalidate named artifacts at the publication boundary, not just hashes."""
     paths = [pathlib.Path(p) for p in paths]
-    manifest_path = next(p for p in paths if p.suffix == '.json')
+    manifest_path = next(p for p in paths if p.suffix == '.json'
+                         and p.name.startswith('heltec_v4_companion_radio_usb-'))
     manifest = json.loads(manifest_path.read_text())
     version, commit, station = (manifest[k] for k in ('meshcore_version', 'commit', 'meshcoreStation_version'))
     suffix = f'{version}-{commit}-meshcoreStation-{station}'
@@ -146,7 +228,12 @@ def verify_release_assets(paths):
                            ('Xiao_nrf52_repeater', 'Xiao_nrf52_repeater')):
         for ext in ('.uf2', '.zip'):
             mapping[target+ext] = public+'-'+suffix+ext
-    expected = set(mapping.values())
+    watch_checksums = set()
+    for target in WATCH_TARGETS:
+        watch_mapping = watch_names(target, version, commit, station)
+        mapping.update(watch_mapping)
+        watch_checksums.update(name+'.sha256' for name in watch_mapping.values() if name.endswith('.bin'))
+    expected = set(mapping.values()) | watch_checksums
     expected |= {p+'.sha256' for p in expected if p.endswith(('.uf2','.zip'))}
     if set(p.name for p in paths) != expected:
         raise ValueError('Release artifacts do not match one complete named build')
@@ -161,11 +248,23 @@ def verify_release_assets(paths):
         for dest, source in mapping.items(): shutil.copyfile(by_name[source],folder/dest)
         manifest['image']=heltec+'.bin'
         (folder/(heltec+'.json')).write_text(json.dumps(manifest))
+        for target in WATCH_TARGETS:
+            watch_path = folder / (target+'.json')
+            watch = json.loads(watch_path.read_text())
+            if (watch.pop('meshcore_version', None), watch.pop('commit', None),
+                    watch.pop('meshcoreStation_version', None), watch.get('image')) != (
+                        version, commit, station, mapping[target+'.bin']):
+                raise ValueError(f'Invalid release metadata for {target}')
+            watch['image'] = target+'.bin'
+            watch_path.write_text(json.dumps(watch))
         verify(folder)
         name_release(folder,version,commit,station)
 
 
 if __name__ == '__main__':
-    verify(sys.argv[1])
-    if len(sys.argv) == 5:
-        name_release(*sys.argv[1:])
+    if sys.argv[1:2] == ['--stage-watch']:
+        stage_watch(*sys.argv[2:])
+    else:
+        verify(sys.argv[1])
+        if len(sys.argv) == 5:
+            name_release(*sys.argv[1:])

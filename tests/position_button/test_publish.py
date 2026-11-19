@@ -6,10 +6,18 @@ import struct
 import zipfile
 from pathlib import Path
 import tempfile
+import sys
 
 spec = importlib.util.spec_from_file_location('publish', Path(__file__).resolve().parents[2] / 'scripts/publish-station-release.py')
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
+root = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(root / 'tests/twatch_ultra'))
+from fixtures import TARGETS, write_watch_fixture
+
+verifier_spec = importlib.util.spec_from_file_location('verifier', root / 'scripts/verify-station-build.py')
+verifier = importlib.util.module_from_spec(verifier_spec)
+verifier_spec.loader.exec_module(verifier)
 sha = 'a' * 40
 with tempfile.TemporaryDirectory() as tmp:
     m.ROOT = Path(tmp)
@@ -38,6 +46,24 @@ with tempfile.TemporaryDirectory() as tmp:
             with zipfile.ZipFile(p,'w') as z:
                 z.writestr('manifest.json',json.dumps({'manifest':{'application':{'bin_file':'app.bin','dat_file':'app.dat'}}}))
                 z.writestr('app.bin',b'app');z.writestr('app.dat',b'metadata')
+    build = m.ROOT / 'build'
+    build.mkdir()
+    write_watch_fixture(build)
+    folder = m.ROOT / 'release'
+    for target in TARGETS:
+        verifier.stage_watch(build, folder, target)
+        mapping = verifier.watch_names(target, 'v1', 'aaaaaaa', 'v1.0.0')
+        watch_path = folder / (target+'.json')
+        watch = json.loads(watch_path.read_text())
+        watch.update(image=mapping[target+'.bin'], meshcore_version='v1',
+                     meshcoreStation_version='v1.0.0', commit='aaaaaaa')
+        watch_path.write_text(json.dumps(watch))
+        for source, name in mapping.items():
+            (folder / source).rename(folder / name)
+            assets.append(str(folder / name))
+            if name.endswith('.bin'):
+                assets.append(str(folder / (name+'.sha256')))
+                names.append(name+'.sha256')
     for name in names:
         if name.endswith('.sha256'):
             payload=name[:-7]

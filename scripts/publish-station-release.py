@@ -42,8 +42,8 @@ def check(commit, version):
 def publish(commit, version, assets):
     tag = check(commit, version)
     paths = [Path(p).resolve() for p in assets]
-    if len(paths) != 15 or len({p.name for p in paths}) != 15:
-        raise ValueError('Expected the fifteen files from one completed four-target build')
+    if len(paths) != 30 or len({p.name for p in paths}) != 30:
+        raise ValueError('Expected the thirty files from one completed seven-target build')
     for path in paths:
         if path.parent != ROOT / 'release' or not path.is_file() or not path.stat().st_size:
             raise ValueError('Missing or unexpected release asset')
@@ -76,6 +76,8 @@ def publish(commit, version, assets):
              'Seeed T1000-E BLE companion: private-channel position button; UF2 or Nordic DFU ZIP.\n'
              'Heltec T114 display repeater: UF2 or Nordic DFU ZIP.\n'
              'XIAO nRF52840 Wio-SX1262 repeater: UF2 or Nordic DFU ZIP.\n'
+             'LilyGO T-Watch Ultra SX1262: USB companion, BLE companion and repeater. '
+             'Use the matching merged .bin for first installation.\n'
              'Position sending is disabled until configured. See docs/t1000-position-button.md.\n')
     with tempfile.TemporaryDirectory(prefix='station-release-') as folder:
         notes_file = Path(folder) / 'notes.md'

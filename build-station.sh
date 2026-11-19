@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build all four custom firmwares into MeshCore/release: bash build-station.sh
+# Build all seven custom firmwares into MeshCore/release: bash build-station.sh
 set -euo pipefail
 
 repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -97,6 +97,14 @@ outputs=("$heltec_name.bin" "$heltec_name.json" "$merged_name.bin"
          "$t1000_name.uf2" "$t1000_name.zip" "$t1000_name.uf2.sha256" "$t1000_name.zip.sha256"
          "$t114_name.uf2" "$t114_name.zip" "$t114_name.uf2.sha256" "$t114_name.zip.sha256"
          "$xiao_name.uf2" "$xiao_name.zip" "$xiao_name.uf2.sha256" "$xiao_name.zip.sha256")
+watch_targets=(lilygo_twatch_ultra_companion_radio_usb
+               lilygo_twatch_ultra_companion_radio_ble
+               lilygo_twatch_ultra_repeater)
+for target in "${watch_targets[@]}"; do
+  app="$target-$suffix"
+  merged="$target-$version-$commit_hash-merged-meshcoreStation-$station_version"
+  outputs+=("$app.bin" "$app.json" "$app.bin.sha256" "$merged.bin" "$merged.bin.sha256")
+done
 # Start each build with a completely empty release directory.
 rm -rf -- "$output_dir"
 mkdir -p -- "$output_dir"
@@ -135,12 +143,21 @@ printf 'Building XIAO nRF52840 Wio-SX1262 repeater\n'
 python3 "$repo_dir/bin/uf2conv/uf2conv.py" -f 0xADA52840 -c \
   "$repo_dir/.pio/build/$xiao/firmware.hex" -o "$staging/$xiao.uf2"
 cp -- "$repo_dir/.pio/build/$xiao/firmware.zip" "$staging/$xiao.zip"
+for target in "${watch_targets[@]}"; do
+  printf 'Building %s\n' "$target"
+  "$pio_cmd" run -e "$target" -t clean
+  "$pio_cmd" run -e "$target"
+  export MERGED_BIN_PATH=".pio/build/$target/firmware-merged.bin"
+  "$pio_cmd" run -e "$target" -t mergebin
+  python3 "$repo_dir/scripts/verify-station-build.py" --stage-watch \
+    ".pio/build/$target" "$staging" "$target"
+done
 python3 "$repo_dir/scripts/verify-station-build.py" "$staging" "$version" "$commit_hash" "$station_version"
 
 for file in "${outputs[@]}"; do mv -- "$staging/$file" "$output_dir/$file"; done
-printf '\nAll four builds complete. Release files:\n'
+printf '\nAll seven builds complete. Release files:\n'
 for file in "${outputs[@]}"; do printf '%s\n' "$output_dir/$file"; done
-printf '\nHeltec: .bin + .json for meshcoreStation. T1000-E, T114 and XIAO: .uf2 or DFU .zip. Merged Heltec image is for full flashing.\n'
+printf '\nHeltec: .bin + .json for meshcoreStation. T1000-E, T114 and XIAO: .uf2 or DFU .zip. Merged Heltec and T-Watch Ultra images are for full flashing.\n'
 
 if $publish_release; then
   assets=()

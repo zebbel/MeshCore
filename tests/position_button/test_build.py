@@ -7,8 +7,12 @@ import shutil
 import struct
 import subprocess
 import tempfile
+import sys
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'tests/twatch_ultra'))
+from fixtures import TARGETS
+
 with tempfile.TemporaryDirectory(prefix='dual build ') as directory:
     parent = Path(directory)
     repo = parent / 'MeshCore'
@@ -42,7 +46,10 @@ with tempfile.TemporaryDirectory(prefix='dual build ') as directory:
     compiler.write_text('''#!/usr/bin/env python3
 import os, pathlib, shutil, sys, zipfile, json
 args = sys.argv
+from fixtures import write_watch_fixture
 name = args[args.index('-e') + 1]
+if os.environ.get('FAIL_WATCH') and name == 'lilygo_twatch_ultra_repeater':
+    sys.exit(7)
 if (os.environ.get('FAIL_T1000') and name.startswith('t1000')) or (os.environ.get('FAIL_T114') and name.startswith('Heltec')) or (os.environ.get('FAIL_XIAO') and name.startswith('Xiao')):
     sys.exit(7)
 build = pathlib.Path('.pio/build') / name
@@ -50,7 +57,9 @@ if 'clean' in args:
     shutil.rmtree(build, ignore_errors=True)
     sys.exit(0)
 build.mkdir(parents=True, exist_ok=True)
-if name.startswith('heltec'):
+if name.startswith('lilygo_twatch_ultra_'):
+    write_watch_fixture(build)
+elif name.startswith('heltec'):
     (build / 'firmware.bin').write_bytes(bytes([0xe9]) + bytes(1023))
     shutil.copy('fixture-partitions.bin', build / 'partitions.bin')
     if 'mergebin' in args:
@@ -62,6 +71,7 @@ else:
         archive.writestr('manifest.json', json.dumps({'manifest': {'application': {'bin_file': 'application.bin', 'dat_file': 'application.dat'}}}))
     (build / 'firmware.hex').write_text((':020000040002F8\\n:10700000000102030405060708090A0B0C0D0E0F08\\n:00000001FF\\n').replace('7000', '6000').replace('0F08', '0F18') if name.startswith('Heltec') else ':020000040002F8\\n:10700000000102030405060708090A0B0C0D0E0F08\\n:00000001FF\\n')
 ''')
+    shutil.copy(ROOT / 'tests/twatch_ultra/fixtures.py', parent / 'fixtures.py')
     compiler.chmod(0o755)
     env = dict(os.environ, STATION_PIO=str(compiler), FIRMWARE_VERSION='v1.17.1')
     stale = repo / 'release' / 'old-version'
@@ -79,7 +89,11 @@ else:
     outputs += [rname + ext for ext in ('.uf2', '.zip', '.uf2.sha256', '.zip.sha256')]
     xname = f'Xiao_nrf52_repeater-v1.17.1-{commit}-meshcoreStation-v1.0.0'
     outputs += [xname + ext for ext in ('.uf2', '.zip', '.uf2.sha256', '.zip.sha256')]
-    assert len(outputs) == 15
+    for target in TARGETS:
+        app = f'{target}-v1.17.1-{commit}-meshcoreStation-v1.0.0'
+        merged = f'{target}-v1.17.1-{commit}-merged-meshcoreStation-v1.0.0'
+        outputs += [app+'.bin', app+'.json', app+'.bin.sha256', merged+'.bin', merged+'.bin.sha256']
+    assert len(outputs) == 30
     assert sorted(p.name for p in release.iterdir()) == sorted(outputs)
     manifest = json.loads((release / (hname + '.json')).read_text())
     assert manifest['image'] == hname + '.bin'
@@ -106,5 +120,7 @@ else:
                             env=dict(env, FAIL_T114='1'), capture_output=True)
     assert result.returncode != 0 and list(release.iterdir()) == []
     result = subprocess.run(['bash', str(repo / 'build-station.sh')], env=dict(env, FAIL_XIAO='1'), capture_output=True)
+    assert result.returncode != 0 and list(release.iterdir()) == []
+    result = subprocess.run(['bash', str(repo / 'build-station.sh')], env=dict(env, FAIL_WATCH='1'), capture_output=True)
     assert result.returncode != 0 and list(release.iterdir()) == []
 print('Root build wrapper, upstream naming, manifests, checksums and failure cleanup passed.')

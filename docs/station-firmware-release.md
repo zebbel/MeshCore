@@ -81,7 +81,7 @@ git pull --ff-only
 bash build-station.sh
 ```
 
-It creates `MeshCore/release/` and puts all four custom firmware builds there. It
+It creates `MeshCore/release/` and puts all seven custom firmware builds there. It
 also works when invoked by absolute path from another working directory.
 The previously installed script above MeshCore is obsolete; use this one now.
 
@@ -132,10 +132,10 @@ recorded in release notes and its short form in filenames. Build date uses
 upstream's date format.
 
 The wrapper finds `pio` on PATH or at `~/.platformio/penv/bin/pio`; alternatively
-set `STATION_PIO` to its full executable path. It clean-builds all four environments,
-validates the Heltec application/partitions and merged image, validates the UF2
+set `STATION_PIO` to its full executable path. It clean-builds all seven environments,
+validates the Heltec and T-Watch Ultra applications, partitions and merged images, validates the UF2
 family/address bounds and DFU archive, updates names/manifests, and writes
-checksums. All files are staged until all four builds and validation succeed.
+checksums. All files are staged until all seven builds and validation succeed.
 
 After a successful pull and preflight checks, the entire `release/` directory
 is deleted and recreated before compilation. This removes all older versions,
@@ -160,7 +160,7 @@ Then use:
 ./build-station.sh --release
 ```
 
-This builds all four firmwares and publishes the 15 files from that build to
+This builds all seven firmwares and publishes the 30 files from that build to
 `https://github.com/zebbel/MeshCore/releases/tag/meshcoreStation-v1.0.1` (the tag
 uses the custom version file). Plain `./build-station.sh` still only builds.
 
@@ -172,7 +172,7 @@ may still select the upstream version label. GitHub credentials stay in GitHub
 CLI's normal credential store, not in the repository.
 
 The script creates a draft release targeting the exact built commit, uploads all
-15 files, checks their names and sizes, then publishes it as the latest
+30 files, checks their names and sizes, then publishes it as the latest
 release. Build or validation failures never create a release. Upload/verification
 failures leave a draft, not a partially populated public update. An existing
 release/tag is never overwritten. If an upload fails, inspect and remove the
@@ -202,9 +202,9 @@ After initially pulling this script update, just run `./build-station.sh` or
 
 ## XIAO nRF52840 + Wio-SX1262 repeater
 
-The normal `bash build-station.sh` now clean-builds four targets: Heltec V4 USB,
-T1000-E BLE position companion, T114 display repeater, and `Xiao_nrf52_repeater`.
-It stages and validates all **15** artifacts before exposing the completed set.
+The normal `bash build-station.sh` now clean-builds seven targets: Heltec V4 USB,
+T1000-E BLE position companion, T114 display repeater, `Xiao_nrf52_repeater`,
+and the three T-Watch Ultra variants. It stages and validates all **30** artifacts before exposing the completed set.
 XIAO uses the existing D1/D2/D3/D4/D5 radio control mapping and D8/D9/D10 SPI.
 Its aggregation protocol is documented in [xiao-neighbour-snr.md](xiao-neighbour-snr.md).
 
@@ -230,3 +230,7 @@ Default operation remains build-only. No publication was executed for this
 unreleased development task; the custom version stays unchanged until an authorized
 release. Build/release tests use simulated compilers and mocked remote operations,
 so their generated files and “Published” test output are not real firmware/releases.
+
+## LilyGO T-Watch Ultra
+
+The [T-Watch Ultra SX1262 variant](lilygo-twatch-ultra.md) adds USB companion, BLE companion and repeater targets. Each target adds a versioned application and manifest, merged initial-flash image and SHA-256 checksums for both images.
